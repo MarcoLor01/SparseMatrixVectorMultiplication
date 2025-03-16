@@ -1,0 +1,3 @@
+/mnt/c/Users/HP/CLionProjects/SpMVParallel/build/CMakeFiles/SpMVParallel.dir
+/mnt/c/Users/HP/CLionProjects/SpMVParallel/build/CMakeFiles/edit_cache.dir
+/mnt/c/Users/HP/CLionProjects/SpMVParallel/build/CMakeFiles/rebuild_cache.dir
