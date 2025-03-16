@@ -3,6 +3,8 @@
 cmake-build-debug/CMakeFiles/clion-Debug-log.txt
 matrix_for_test/
 problematic_matrix/
+.idea/
+build/
 
 
 
