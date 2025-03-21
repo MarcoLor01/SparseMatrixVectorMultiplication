@@ -5,35 +5,26 @@
 #include <stdio.h>
 #include "utility.h"
 #include <unistd.h>
-#include <omp.h>
 #include <math.h>
 #include <stdbool.h>
 
-int get_max_threads() {
-#ifdef _OPENMP
-    return omp_get_max_threads();
-#else
-    return 1;  // Se OpenMP non è supportato
-#endif
-}
-
-
 // Funzioni di utilità per l'ordinamento
 void swap(int *a, int *b) {
-    int temp = *a;
+    const int temp = *a;
     *a = *b;
     *b = temp;
 }
 
+
 void swap_double(double *a, double *b) {
-    double temp = *a;
+    const double temp = *a;
     *a = *b;
     *b = temp;
 }
 
 // Partizione per quicksort
-size_t partition(int *col_idx, double *values, size_t low, size_t high) {
-    int pivot = col_idx[high];
+size_t partition(int *col_idx, double *values, const size_t low, const size_t high) {
+    const int pivot = col_idx[high];
     size_t i = low - 1;
 
     for (size_t j = low; j < high; j++) {
@@ -51,7 +42,7 @@ size_t partition(int *col_idx, double *values, size_t low, size_t high) {
 
 
 
-// Quicksort iterativo per evitare overflow dello stack
+// Quicksort iterativo
 void sort_row(int *col_idx, double *values, size_t low, size_t high) {
     if (low < high) {
         if (high - low > 10000) {
@@ -80,7 +71,7 @@ void sort_row(int *col_idx, double *values, size_t low, size_t high) {
             }
         } else {
             // Versione ricorsiva per array più piccoli
-            size_t pi = partition(col_idx, values, low, high);
+            const size_t pi = partition(col_idx, values, low, high);
             if (pi > 0) sort_row(col_idx, values, low, pi - 1);
             sort_row(col_idx, values, pi + 1, high);
         }
@@ -120,16 +111,15 @@ double checkDifferences(const double *y_h, const double *y_SerialResult, const i
     return count > 0 ? totalRelativeDiff / count : 0.0;
 }
 
-void write_results_to_csv(const char *matrix_name, int num_rows, int num_cols, int nz,
-                          int num_threads, double time_serial, double time_serial_hll, double time_parallel,
-                          double time_parallel_unrolling, double time_parallel_hll, double time_parallel_hll_simd, double speedup_parallel,
-                          double speedup_unrolling, double speedup_hll, double speedup_hll_simd, double efficiency_parallel,
-                          double efficiency_unrolling, double efficiency_hll, double efficiency_hll_simd, double flops_serial, double flops_hll_serial,
-                          double flops_parallel, double flops_parallel_unrolling, double flops_parallel_hll, double flops_parallel_hll_simd, const char *output_file) {
-    FILE *fp;
-    int file_exists = access(output_file, F_OK) != -1;
+void write_results_to_csv(const char *matrix_name, const int num_rows, const int num_cols, const int nz,
+                          const int num_threads, const double time_serial, const double time_serial_hll, const double time_parallel,
+                          const double time_parallel_simd, const double time_parallel_hll, const double time_parallel_hll_simd, const double speedup_parallel,
+                          const double speedup_simd, const double speedup_hll, const double speedup_hll_simd, const double efficiency_parallel,
+                          const double efficiency_simd, const double efficiency_hll, const double efficiency_hll_simd, const double flops_serial, const double avg_flops_hll_serial,
+                          const double flops_parallel, const double flops_parallel_simd, const double flops_parallel_hll, const double flops_parallel_hll_simd, const char *output_file) {
+    const int file_exists = access(output_file, F_OK) != -1;
 
-    fp = fopen(output_file, "a");
+    FILE *fp = fopen(output_file, "a");
     if (fp == NULL) {
         printf("Errore nell'apertura del file %s\n", output_file);
         return;
@@ -138,19 +128,19 @@ void write_results_to_csv(const char *matrix_name, int num_rows, int num_cols, i
     // Scrivi l'intestazione se il file è nuovo
     if (!file_exists) {
         fprintf(fp, "matrix_name,rows,cols,nonzeros,num_threads,"
-                    "time_serial,time_serial_hll,time_parallel,time_parallel_unrolling,time_parallel_hll,time_parallel_hll_simd,"
-                    "flops_serial,flops_serial_hll,flops_parallel,flops_parallel_unrolling,flops_parallel_hll,flops_parallel_hll_simd,"
-                    "speedup_parallel,speedup_unrolling,speedup_hll,speedup_hll_simd,"
-                    "efficiency_parallel,efficiency_unrolling,efficiency_hll,efficiency_hll_simd\n");
+                    "time_serial,time_serial_hll,time_parallel,time_parallel_simd,time_parallel_hll,time_parallel_hll_simd,"
+                    "flops_serial,flops_serial_hll,flops_parallel,flops_parallel_simd,flops_parallel_hll,flops_parallel_hll_simd,"
+                    "speedup_parallel,speedup_simd,speedup_hll,speedup_hll_simd,"
+                    "efficiency_parallel,efficiency_simd,efficiency_hll,efficiency_hll_simd\n");
     }
 
     // Scrivi una riga di dati
     fprintf(fp, "%s,%d,%d,%d,%d,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f\n",
             matrix_name, num_rows, num_cols, nz, num_threads,
-            time_serial, time_serial_hll, time_parallel, time_parallel_unrolling, time_parallel_hll, time_parallel_hll_simd,
-            flops_serial, flops_hll_serial, flops_parallel, flops_parallel_unrolling, flops_parallel_hll, flops_parallel_hll_simd,
-            speedup_parallel, speedup_unrolling, speedup_hll, speedup_hll_simd,
-            efficiency_parallel, efficiency_unrolling, efficiency_hll, efficiency_hll_simd);
+            time_serial, time_serial_hll, time_parallel, time_parallel_simd, time_parallel_hll, time_parallel_hll_simd,
+            flops_serial, avg_flops_hll_serial, flops_parallel, flops_parallel_simd, flops_parallel_hll, flops_parallel_hll_simd,
+            speedup_parallel, speedup_simd, speedup_hll, speedup_hll_simd,
+            efficiency_parallel, efficiency_simd, efficiency_hll, efficiency_hll_simd);
 
     fclose(fp);
 }

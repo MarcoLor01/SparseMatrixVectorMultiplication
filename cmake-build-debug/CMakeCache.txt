@@ -219,6 +219,12 @@ OpenMP_C_FLAGS:STRING=-fopenmp
 //C compiler libraries for OpenMP parallelization
 OpenMP_C_LIB_NAMES:STRING=
 
+//No help, variable specified on the command line.
+Python3_EXECUTABLE:UNINITIALIZED=C:/Users/HP/CLionProjects/SpMVParallel/venv/Scripts/python.exe
+
+//No help, variable specified on the command line.
+Python_EXECUTABLE:UNINITIALIZED=C:/Users/HP/CLionProjects/SpMVParallel/venv/Scripts/python.exe
+
 //Value Computed by CMake
 SpMVParallel_BINARY_DIR:STATIC=C:/Users/HP/CLionProjects/SpMVParallel/cmake-build-debug
 

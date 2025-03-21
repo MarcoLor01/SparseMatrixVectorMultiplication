@@ -28,12 +28,12 @@ typedef struct {
 void init_hll_matrix(HLLMatrix *hll);
 int convert_in_hll(const PreMatrix *pre, HLLMatrix *hll);
 void free_hll_matrix(HLLMatrix *hll);
-void spmv_hll(const HLLMatrix *A, const double *x, double *y, int num_threads,
+void spmv_hll(const ELLPACKBlock *blocks, const double *x, double *y, int num_threads,
               int const *thread_block_start, int const *thread_block_end);
 int prepare_thread_distribution_hll(const HLLMatrix *matrix, int num_threads,
-                                    int *thread_block_start, int *thread_block_end);
+                                   int **thread_block_start, int **thread_block_end);
 void printHLLMatrix(HLLMatrix *hll);
-void spmv_hll_simd(HLLMatrix *A, const double *x, double *y, int num_threads,
+void spmv_hll_simd(const ELLPACKBlock *blocks, const double *x, double *y, int num_threads,
                    int const *thread_block_start, int const *thread_block_end);
-void spmv_hll_serial(const HLLMatrix *A, const double *x, double *y);
+void spmv_hll_serial(int num_blocks, const ELLPACKBlock *blocks, const double *x, double *y);
 #endif //ELL_MATRIX_H

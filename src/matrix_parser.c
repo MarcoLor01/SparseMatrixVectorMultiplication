@@ -67,7 +67,7 @@ int read_matrix_market(const char *filename, PreMatrix *mat) {
     int actual_nz = 0;
     for (int i = 0; i < original_nz; i++) {
         if (mm_is_pattern(mat->type)) {
-            int result = fscanf(f, "%d %d", &temp_I[actual_nz], &temp_J[actual_nz]);
+            const int result = fscanf(f, "%d %d", &temp_I[actual_nz], &temp_J[actual_nz]);
             if (result != 2) {
                 printf("Errore di lettura pattern alla riga %d: letti %d valori invece di 2\n", i+1, result);
                 char buffer[100];
@@ -81,8 +81,7 @@ int read_matrix_market(const char *filename, PreMatrix *mat) {
             }
             temp_val[actual_nz] = 1.0;
         } else {
-
-            int result = fscanf(f, "%d %d %lf", &temp_I[actual_nz], &temp_J[actual_nz], &temp_val[actual_nz]);
+            const int result = fscanf(f, "%d %d %lf", &temp_I[actual_nz], &temp_J[actual_nz], &temp_val[actual_nz]);
             if (result != 3) {
                 printf("Errore di lettura alla riga %d: letti %d valori invece di 3\n", i+1, result);
                 char buffer[100];

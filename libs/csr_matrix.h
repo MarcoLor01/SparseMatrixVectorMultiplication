@@ -22,6 +22,6 @@ void print_csr_matrix(const CSRMatrix *mat);
 void csr_matrix_vector_mult(int num_row, const int *row_ptr, const int *col_idx, const double *values, const double *x, double *y);
 void spvm_csr_parallel(const int *row_ptr, const int *col_idx, const double *values, const double *x, double *y, int num_threads, const int *thread_row_start, const int *thread_row_end);
 void spvm_parallel_dynamic(int num_row, const int *row_ptr, const int *col_idx, const double *values, const double *x, double *y, int num_threads);
-int prepare_thread_distribution(int num_row, const int *row_ptr, int num_threads, long long total_nnz, int *thread_row_start, int *thread_row_end);
-void spvm_csr_parallel_unrolling(const int *row_ptr, const int *col_idx, const double *values, const double *x, double *y, int num_threads, const int *thread_row_start, const int *thread_row_end);
+int prepare_thread_distribution(const int num_row, const int *row_ptr, int num_threads, const long long total_nnz, int **thread_row_start, int **thread_row_end);
+void spvm_csr_parallel_simd(const int *row_ptr, const int *col_idx, const double *values, const double *x, double *y, int num_threads, const int *thread_row_start, const int *thread_row_end);
 #endif

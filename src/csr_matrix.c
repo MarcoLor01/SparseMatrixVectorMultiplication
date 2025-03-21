@@ -42,13 +42,23 @@ int convert_in_csr(const PreMatrix *pre, CSRMatrix *csr) {
         return -1;
     }
 
+    // Calcola la memoria occupata in MB
+    double memory_size_bytes = 0.0;
+    memory_size_bytes += (csr->M + 1) * sizeof(int);  // row_ptr
+    memory_size_bytes += csr->nz * sizeof(int);       // col_idx
+    memory_size_bytes += csr->nz * sizeof(double);    // values
+    memory_size_bytes += sizeof(CSRMatrix);           // struct itself
+
+    double memory_size_mb = memory_size_bytes / (1024.0 * 1024.0);
+
+    printf("Memoria occupata dalla matrice CSR: %.2f MB\n", memory_size_mb);
+
     // Conta gli elementi per riga
     for (int i = 0; i < pre->nz; i++) {
         csr->row_ptr[pre->I[i] + 1]++;
     }
 
-    // Calcola gli offset cumulativi, prima ogni elemento conteneva
-    // il numero di elementi della riga, ora contiene l'indice del primo elemento
+    // Calcola gli offset cumulativi
     for (int i = 1; i <= csr->M; i++) {
         csr->row_ptr[i] += csr->row_ptr[i - 1];
     }
@@ -80,7 +90,7 @@ int convert_in_csr(const PreMatrix *pre, CSRMatrix *csr) {
 
         // Se ci sono elementi da ordinare nella riga
         if (end - start > 1) {
-            // Usa la tua funzione quicksort ottimizzata
+            // Usa la funzione quicksort ottimizzata
             sort_row(csr->col_idx, csr->values, start, end - 1);
         }
     }
@@ -156,8 +166,8 @@ void spvm_csr_parallel(const int *row_ptr, const int *col_idx, const double *val
 */
 
 int prepare_thread_distribution(const int num_row, const int *row_ptr, int num_threads,
-                               const long long total_nnz, int *thread_row_start, int *thread_row_end) {
-    // Check special cases
+                               const long long total_nnz, int **thread_row_start, int **thread_row_end) {
+    // Check special cases and allocate memory
     if (num_row <= 0 || num_threads <= 0) {
         return 0;
     }
@@ -167,83 +177,87 @@ int prepare_thread_distribution(const int num_row, const int *row_ptr, int num_t
         num_threads = num_row;
     }
 
-    // Calculate target non-zeros per thread
-    const long long nnz_per_thread = (total_nnz + num_threads - 1) / num_threads; // Ceiling division
+    // Allocate memory
+    *thread_row_start = malloc((size_t)num_threads * sizeof(int));
+    *thread_row_end = malloc((size_t)num_threads * sizeof(int));
+    int *thread_nnz = malloc((size_t)num_threads * sizeof(int));
 
-    // Initialize
-    long long current_thread_nnz = 0;
-    int current_thread = 0;
-    thread_row_start[0] = 0;
-
-    // First pass: distribute rows based on non-zero elements
-    for (int i = 0; i < num_row; i++) {
-        const int row_nnz = row_ptr[i+1] - row_ptr[i];
-
-        // If adding this row would exceed the target and we haven't assigned the last thread
-        if (current_thread_nnz + row_nnz > nnz_per_thread &&
-            current_thread < num_threads - 1 &&
-            i > thread_row_start[current_thread]) { // Ensure at least one row per thread
-
-            thread_row_end[current_thread] = i;
-            current_thread++;
-            thread_row_start[current_thread] = i;
-            current_thread_nnz = 0;
-        }
-
-        current_thread_nnz += row_nnz;
+    if (*thread_row_start == NULL || *thread_row_end == NULL || thread_nnz == NULL) {
+        // Handle memory allocation failure
+        if (*thread_row_start) free(*thread_row_start);
+        if (*thread_row_end) free(*thread_row_end);
+        if (thread_nnz) free(thread_nnz);
+        return 0;
     }
 
-    // Make sure all threads have been assigned work
-    while (current_thread < num_threads - 1) {
-        // If we have fewer distinct workloads than threads, some threads might not get work
-        // In this case, just divide the remaining rows evenly
-        int remaining_rows = num_row - thread_row_start[current_thread];
-        int rows_per_remaining_thread = remaining_rows / (num_threads - current_thread);
-
-        if (rows_per_remaining_thread > 0) {
-            thread_row_end[current_thread] = thread_row_start[current_thread] + rows_per_remaining_thread;
-            current_thread++;
-            thread_row_start[current_thread] = thread_row_end[current_thread-1];
-        } else {
-            // Can't subdivide further
-            break;
-        }
-    }
-
-    // Last thread gets all remaining rows
-    thread_row_end[current_thread] = num_row;
-
-    // Calculate actual thread count used
-    int actual_threads_used = current_thread + 1;
-
-    // Second pass: balance the load by checking if any thread has significantly more work
-    long long *thread_nnz = (long long *)malloc(actual_threads_used * sizeof(long long));
-    if (!thread_nnz) {
-        return actual_threads_used; // Can't balance, but return how many threads we're using
-    }
-
-    // Calculate non-zeros per thread
-    for (int t = 0; t < actual_threads_used; t++) {
+    // Initialize arrays
+    for (int t = 0; t < num_threads; t++) {
+        (*thread_row_start)[t] = -1;
+        (*thread_row_end)[t] = -1;
         thread_nnz[t] = 0;
-        for (int i = thread_row_start[t]; i < thread_row_end[t]; i++) {
-            thread_nnz[t] += (row_ptr[i+1] - row_ptr[i]);
+    }
+
+    // Calculate target non-zeros per thread (ceiling division)
+    const long long nnz_per_thread = (total_nnz + num_threads - 1) / num_threads;
+
+    // Single-pass distribution of rows based on non-zero elements
+    int current_thread = 0;
+    int current_nnz = 0;
+
+    for (int i = 0; i < num_row; i++) {
+        int row_nnz = row_ptr[i+1] - row_ptr[i];
+
+        // Set start row for current thread if not set yet
+        if ((*thread_row_start)[current_thread] == -1) {
+            (*thread_row_start)[current_thread] = i;
+        }
+
+        current_nnz += row_nnz;
+        thread_nnz[current_thread] += row_nnz;
+
+        // If we've reached the target for this thread and it's not the last thread
+        if (current_nnz >= nnz_per_thread && current_thread < num_threads - 1) {
+            (*thread_row_end)[current_thread] = i + 1; // End is exclusive
+            current_thread++;
+            current_nnz = 0;
         }
     }
 
-    // Find imbalances and correct them
-    for (int t = 0; t < actual_threads_used - 1; t++) {
-        // If next thread has much more work
+    // Ensure the last active thread covers all remaining rows
+    if (current_thread < num_threads) {
+        (*thread_row_end)[current_thread] = num_row;
+        current_thread++;
+    }
+
+    // Determine how many threads are actually used
+    int valid_threads = 0;
+    for (int t = 0; t < num_threads; t++) {
+        if ((*thread_row_start)[t] != -1 && (*thread_row_end)[t] != -1 && thread_nnz[t] > 0) {
+            // Keep valid thread data by compacting the arrays
+            if (valid_threads != t) {
+                (*thread_row_start)[valid_threads] = (*thread_row_start)[t];
+                (*thread_row_end)[valid_threads] = (*thread_row_end)[t];
+                thread_nnz[valid_threads] = thread_nnz[t];
+            }
+            valid_threads++;
+        }
+    }
+
+    // Update the actual number of threads used
+    num_threads = valid_threads;
+
+    // Only do one pass to avoid excessive overhead
+    for (int t = 0; t < num_threads - 1; t++) {
+        // Check if next thread has significantly more work (more than 1.5x)
         if (thread_nnz[t+1] > thread_nnz[t] * 1.5) {
-            // Move rows from t+1 to t until balanced or no more rows can be moved
-            while (thread_row_end[t] < thread_row_start[t+1] + 1 &&
-                   thread_nnz[t+1] > thread_nnz[t] * 1.2) {
+            int start_row = (*thread_row_start)[t+1];
+            int row_nnz = row_ptr[start_row+1] - row_ptr[start_row];
 
-                int row_to_move = thread_row_start[t+1];
-                int row_nnz = row_ptr[row_to_move+1] - row_ptr[row_to_move];
-
-                // Update boundaries
-                thread_row_end[t]++;
-                thread_row_start[t+1]++;
+            // Only move the row if it doesn't make the current thread overloaded
+            if (thread_nnz[t] + row_nnz <= nnz_per_thread * 1.2) {
+                // Move one row from next thread to current thread
+                (*thread_row_end)[t]++;
+                (*thread_row_start)[t+1]++;
 
                 // Update non-zero counts
                 thread_nnz[t] += row_nnz;
@@ -252,32 +266,58 @@ int prepare_thread_distribution(const int num_row, const int *row_ptr, int num_t
         }
     }
 
+    // Add detailed logging for each thread
+    printf("\n--- Dettagli distribuzione thread ---\n");
+    printf("Thread attivi: %d (su %d richiesti inizialmente)\n", valid_threads, num_threads);
+    printf("Numero totale di nnz: %lld\n", total_nnz);
+    printf("Numero totale di righe: %d\n\n", num_row);
+
+    for (int t = 0; t < num_threads; t++) {
+        int num_rows = (*thread_row_end)[t] - (*thread_row_start)[t];
+        int actual_nnz = 0;
+
+        // Calcola il numero effettivo di nnz per questo thread
+        for (int i = (*thread_row_start)[t]; i < (*thread_row_end)[t]; i++) {
+            actual_nnz += row_ptr[i+1] - row_ptr[i];
+
+        }
+
+        printf("Thread %d: %d righe (da %d a %d), %d nnz (%.2f%% del totale)\n",
+                t,
+                num_rows,
+                (*thread_row_start)[t],
+                (*thread_row_end)[t] - 1,
+                actual_nnz,
+                (actual_nnz * 100.0) / total_nnz);
+    }
+    printf("--- Fine dettagli distribuzione ---\n\n");
     free(thread_nnz);
-    return actual_threads_used;
+    return valid_threads;
 }
 
 
-void spvm_csr_parallel_unrolling(const int *row_ptr, const int *col_idx, const double *values, const double *x,
-    double *y, int num_threads, const int *thread_row_start, const int *thread_row_end) {
+void spvm_csr_parallel_simd(const int *row_ptr, const int *col_idx, const double *values,
+                                     const double *x, double *y, int num_threads,
+                                     const int *thread_row_start, const int *thread_row_end) {
     #pragma omp parallel num_threads(num_threads)
     {
         const int thread_id = omp_get_thread_num();
+        const int start_row = thread_row_start[thread_id];
+        const int end_row = thread_row_end[thread_id];
 
-        // Compute phase
-        for (int i = thread_row_start[thread_id]; i < thread_row_end[thread_id]; i++) {
+        for (int i = start_row; i < end_row; i++) {
             const int row_start = row_ptr[i];
             const int row_end = row_ptr[i + 1];
 
-            // Uso variabile temporanea per migliorare la località di cache
             double temp_sum = 0.0;
 
             #pragma omp simd reduction(+:temp_sum)
             for (int j = row_start; j < row_end; j++) {
                 temp_sum += values[j] * x[col_idx[j]];
             }
-            y[i] = temp_sum; // Assegnazione single-write
+
+            y[i] = temp_sum;
         }
     }
 }
-
 

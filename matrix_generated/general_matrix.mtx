@@ -1,0 +1,16 @@
+%%MatrixMarket matrix coordinate real general
+%-------------------------------------------------------------------------------
+% Generated Matrix
+% name: Generated/general_test
+% date: 2025
+% author: Generator
+% kind: test matrix
+%-------------------------------------------------------------------------------
+4 4 7
+1 1 11
+1 2 12
+2 2 22
+2 3 23
+3 3 33
+4 3 43
+4 4 44
