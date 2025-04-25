@@ -1,0 +1,8 @@
+/usr/bin/cmake -DCMAKE_BUILD_TYPE=Debug -G "Unix Makefiles" -S /tmp/tmp.J90RhNJ2kq -B /tmp/tmp.J90RhNJ2kq
+CMake Error at /usr/share/cmake/Modules/CMakeDetermineCUDACompiler.cmake:277 (message):
+  CMAKE_CUDA_ARCHITECTURES must be non-empty if set.
+Call Stack (most recent call first):
+  CMakeLists.txt:2 (project)
+
+
+-- Configuring incomplete, errors occurred!

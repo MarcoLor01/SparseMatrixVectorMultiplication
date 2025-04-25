@@ -1,17 +1,39 @@
 #include <stdio.h>
-#include <omp.h>
 #include <stdlib.h>
 #include <string.h>
-#include "hll_matrix.h"
 #include <immintrin.h>
 #include <unistd.h>
+#include <omp.h>
+#include <hll_matrix.h>
+#include <matrix_parser.h>
 
 void init_hll_matrix(HLLMatrix *hll) {
     hll->num_blocks = 0;
     hll->blocks = NULL;
 }
 
-int convert_in_hll(const PreMatrix *pre, HLLMatrix *hll) {
+// Struttura per ordinare gli elementi per riga e colonna
+typedef struct {
+    int col;
+    double val;
+} ColValPair;
+
+int compareColValPair(const void *a, const void *b) {
+    // Converti i puntatori void* ai tipi corretti (ColValPair*)
+    ColValPair *pairA = (ColValPair *)a;
+    ColValPair *pairB = (ColValPair *)b;
+
+    // Confronta in base al campo 'col'
+    if (pairA->col < pairB->col) {
+        return -1; // pairA viene prima di pairB
+    } else if (pairA->col > pairB->col) {
+        return 1;  // pairA viene dopo pairB
+    } else {
+        return 0;  // Le colonne sono uguali
+    }
+}
+
+int convert_to_hll(const PreMatrix *pre, HLLMatrix *hll) {
     // Inizializzazione della matrice HLL
     init_hll_matrix(hll);
 
@@ -35,7 +57,7 @@ int convert_in_hll(const PreMatrix *pre, HLLMatrix *hll) {
     }
 
     // Calcolo del numero di elementi non zero per riga
-    int *row_counts = calloc(M, sizeof(int));
+    int *row_counts = (int *)calloc(M, sizeof(int));
     if (!row_counts) {
         printf("Errore di allocazione memoria per row_counts\n");
         free_hll_matrix(hll);
@@ -73,9 +95,7 @@ int convert_in_hll(const PreMatrix *pre, HLLMatrix *hll) {
         hll->blocks[b].N = pre->N;
         hll->blocks[b].MAXNZ = max_nnz;
 
-        // Allocazione degli array JA e AS in formato trasposto
         if (max_nnz > 0) {
-            // Allocazione linearizzata di JA (MAXNZ x num_rows)
             hll->blocks[b].JA = (int *)malloc(max_nnz * num_rows * sizeof(int));
             if (!hll->blocks[b].JA) {
                 printf("ERRORE: Allocazione fallita per JA del blocco %d\n", b);
@@ -84,7 +104,6 @@ int convert_in_hll(const PreMatrix *pre, HLLMatrix *hll) {
                 return -1;
             }
 
-            // Allocazione linearizzata di AS (MAXNZ x num_rows)
             hll->blocks[b].AS = (double *)malloc(max_nnz * num_rows * sizeof(double));
             if (!hll->blocks[b].AS) {
                 printf("ERRORE: Allocazione fallita per AS del blocco %d\n", b);
@@ -95,7 +114,7 @@ int convert_in_hll(const PreMatrix *pre, HLLMatrix *hll) {
 
             // Inizializzazione degli array con valori di default
             for (int i = 0; i < max_nnz * num_rows; i++) {
-                hll->blocks[b].JA[i] = 0; // Inizializziamo a 0 invece di -1
+                hll->blocks[b].JA[i] = 0;
                 hll->blocks[b].AS[i] = 0.0;
             }
         } else {
@@ -120,7 +139,7 @@ int convert_in_hll(const PreMatrix *pre, HLLMatrix *hll) {
     }
 
     // Reset contatori per riempimento
-    int *current_pos = calloc(M, sizeof(int));
+    int *current_pos = (int *)calloc(M, sizeof(int));
     if (!current_pos) {
         printf("Errore di allocazione memoria per current_pos\n");
         free_hll_matrix(hll);
@@ -129,14 +148,8 @@ int convert_in_hll(const PreMatrix *pre, HLLMatrix *hll) {
         return -1;
     }
 
-    // Struttura per ordinare gli elementi per riga e colonna
-    typedef struct {
-        int col;
-        double val;
-    } ColValPair;
-
     // Array di array per memorizzare temporaneamente gli elementi ordinati per riga
-    ColValPair **sorted_elements = malloc(M * sizeof(ColValPair *));
+    ColValPair **sorted_elements = (ColValPair **)malloc(M * sizeof(ColValPair *));
     if (!sorted_elements) {
         printf("Errore di allocazione memoria per sorted_elements\n");
         free_hll_matrix(hll);
@@ -185,21 +198,16 @@ int convert_in_hll(const PreMatrix *pre, HLLMatrix *hll) {
     }
 
     // Reset dei contatori
-    memset(current_pos, 0, M * sizeof(int));
+    //memset(current_pos, 0, M * sizeof(int));
 
-    // Ordina gli elementi per ogni riga per indice di colonna
     for (int i = 0; i < M; i++) {
-        if (row_counts[i] > 0) {
-            // Ordinamento per indice di colonna (insertion sort)
-            for (int j = 1; j < row_counts[i]; j++) {
-                const ColValPair temp = sorted_elements[i][j];
-                int k = j;
-                while (k > 0 && sorted_elements[i][k-1].col > temp.col) {
-                    sorted_elements[i][k] = sorted_elements[i][k-1];
-                    k--;
-                }
-                sorted_elements[i][k] = temp;
-            }
+        if (row_counts[i] > 1) {
+            qsort(
+                sorted_elements[i],      // Puntatore all'inizio dell'array da ordinare (per la riga i)
+                (size_t)row_counts[i],   // Numero di elementi nell'array per la riga i (cast a size_t)
+                sizeof(ColValPair),      // Dimensione in byte di ciascun elemento (la struct)
+                compareColValPair        // Puntatore alla funzione di confronto definita sopra
+            );
         }
     }
 
@@ -222,8 +230,8 @@ int convert_in_hll(const PreMatrix *pre, HLLMatrix *hll) {
             // Memorizza l'ultimo indice di colonna valido
             last_valid_col[i] = col;
 
-            // Inserimento valore con layout trasposto: j * num_rows + local_row
-            const int idx = j * hll->blocks[block_idx].M + local_row;
+            // Inserimento valore con layout trasposto
+            const int idx = local_row * hll->blocks[block_idx].MAXNZ + j;
 
             hll->blocks[block_idx].JA[idx] = col;
             hll->blocks[block_idx].AS[idx] = val;
@@ -231,32 +239,11 @@ int convert_in_hll(const PreMatrix *pre, HLLMatrix *hll) {
 
         // Riempimento del padding con l'ultimo indice di colonna valido
         for (int j = row_counts[i]; j < hll->blocks[block_idx].MAXNZ; j++) {
-            const int idx = j * hll->blocks[block_idx].M + local_row;
+            const int idx = local_row * hll->blocks[block_idx].MAXNZ + j;
             hll->blocks[block_idx].JA[idx] = last_valid_col[i];
             hll->blocks[block_idx].AS[idx] = 0.0;
         }
     }
-
-    // Calcolo memoria utilizzata
-    size_t total_memory = 0;
-    double max_block_mem = 0.0;
-
-    for (int b = 0; b < num_blocks; b++) {
-        if (hll->blocks[b].MAXNZ > 0) {
-            const size_t block_mem = (size_t)hll->blocks[b].M * hll->blocks[b].MAXNZ * (sizeof(int) + sizeof(double));
-            total_memory += block_mem;
-
-            const double block_mem_gb = (double)block_mem / (1024.0 * 1024.0);
-            if (block_mem_gb > max_block_mem) {
-                max_block_mem = block_mem_gb;
-            }
-        }
-    }
-
-    const double total_mem_gb = (double)total_memory / (1024.0 * 1024.0);
-    printf("Memoria HLL totale: %.5f MB, Memoria massima per blocco: %.5f MB\n",
-           total_mem_gb, max_block_mem);
-
     // Pulizia memoria
     for (int i = 0; i < M; i++) {
         if (sorted_elements[i]) free(sorted_elements[i]);
@@ -268,14 +255,13 @@ int convert_in_hll(const PreMatrix *pre, HLLMatrix *hll) {
     return 0;
 }
 
-// Funzione per liberare la memoria di una matrice HLL con layout trasposto
+// Funzione per liberare la memoria di una matrice HLL
 void free_hll_matrix(HLLMatrix *hll) {
     if (!hll) return;
 
     // Liberazione della memoria per ciascun blocco
     if (hll->blocks) {
         for (int b = 0; b < hll->num_blocks; b++) {
-            // Con il layout trasposto, JA e AS sono array monodimensionali
             if (hll->blocks[b].JA) {
                 free(hll->blocks[b].JA);
                 hll->blocks[b].JA = NULL;
@@ -291,6 +277,62 @@ void free_hll_matrix(HLLMatrix *hll) {
     }
     // Resetta i valori
     hll->num_blocks = 0;
+}
+
+
+
+// Funzione serializzata per la moltiplicazione SpMV
+void spmv_hll_serial(const int num_blocks, const ELLPACKBlock *blocks, const double *x, double *y) {
+    // Elabora ogni blocco della matrice HLL
+    for (int b = 0; b < num_blocks; b++) {
+        const ELLPACKBlock *block = &blocks[b];
+        const int row_offset = b * HACK_SIZE;    // Calcolo dell'offset delle righe globali
+        const int num_rows = block->M;
+
+        // Per ogni riga nel blocco corrente
+        for (int i = 0; i < num_rows; i++) {
+            double sum = 0.0;
+
+            // Per ogni possibile elemento non-zero nella riga
+            for (int j = 0; j < block->MAXNZ; j++) {
+                const int idx = i * block->MAXNZ + j;
+                const int col = block->JA[idx];
+                sum += block->AS[idx] * x[col];
+            }
+
+            // Inserisce il risultato nella posizione corretta del vettore y
+            y[row_offset + i] = sum;
+        }
+    }
+}
+
+
+
+//Funzione per stampare i contenuti di una matrice HLL
+void printHLLMatrix(HLLMatrix *hll) {
+        printf("HLL Matrix con %d blocchi:\n", hll->num_blocks);
+
+        for (int b = 0; b < hll->num_blocks; b++) {
+            ELLPACKBlock *block = &hll->blocks[b];
+            printf("\nBlocco %d (%d righe, %d colonne, MAXNZ=%d):\n",
+                   b, block->M, block->N, block->MAXNZ);
+
+            for (int i = 0; i < block->M; i++) {
+                printf("Riga %d: ", i);
+
+                // Iteriamo attraverso i non-zeri in questa riga
+                for (int j = 0; j < block->MAXNZ; j++) {
+                    // Calcoliamo l'indice corretto nell'array
+                    int idx = i * block->MAXNZ + j;
+                    if (block->JA[idx] >= 0 && block->JA[idx] < block->N) {
+                        printf("(%d, %.6f) ", block->JA[idx], block->AS[idx]);
+                    } else {
+                        printf("(padding, %.6f) ", block->AS[idx]);
+                    }
+                }
+                printf("\n");
+            }
+        }
 }
 
 void spmv_hll_simd(const ELLPACKBlock *blocks, const double *x, double *y, int num_threads,
@@ -318,45 +360,13 @@ void spmv_hll_simd(const ELLPACKBlock *blocks, const double *x, double *y, int n
                 // Direttiva SIMD con allineamento e clausole aggiuntive
                 #pragma omp simd reduction(+:sum)
                 for (int j = 0; j < maxnz; j++) {
-                    const int idx = j * num_rows + i;
+                    const int idx = i * maxnz + j;
                     const int col = block_JA[idx];
-                    if (col < block_N) {
-                        sum += block_AS[idx] * x[col];
-                    }
+                    sum += block_AS[idx] * x[col];
                 }
 
                 y[row_offset + i] = sum;
             }
-        }
-    }
-}
-
-// Funzione serializzata per la moltiplicazione SpMV
-void spmv_hll_serial(const int num_blocks, const ELLPACKBlock *blocks, const double *x, double *y) {
-    // Elabora ogni blocco della matrice HLL
-    for (int b = 0; b < num_blocks; b++) {
-        const ELLPACKBlock *block = &blocks[b];  // Modificato qui: puntatore invece di copia
-        const int row_offset = b * HACK_SIZE;    // Calcolo dell'offset delle righe globali
-        const int num_rows = block->M;           // Modificato qui: -> invece di .
-
-        // Per ogni riga nel blocco corrente
-        for (int i = 0; i < num_rows; i++) {
-            double sum = 0.0;
-
-            // Per ogni possibile elemento non-zero nella riga
-            for (int j = 0; j < block->MAXNZ; j++) {  // Modificato qui: -> invece di .
-                // Accesso all'elemento (i,j) nel layout trasposto
-                const int idx = j * num_rows + i;
-                const int col = block->JA[idx];       // Modificato qui: -> invece di .
-
-                // Verifica che l'indice di colonna sia valido
-                if (col >= 0 && col < block->N) {      // Modificato qui: -> invece di .
-                    sum += block->AS[idx] * x[col];    // Modificato qui: -> invece di .
-                }
-            }
-
-            // Inserisce il risultato nella posizione corretta del vettore y
-            y[row_offset + i] = sum;
         }
     }
 }
@@ -378,16 +388,14 @@ void spmv_hll(const ELLPACKBlock *blocks, const double *x, double *y, int num_th
             const int maxnz = block->MAXNZ;
             const double *block_AS = block->AS;  // Cache locale dei puntatori
             const int *block_JA = block->JA;
-            // const int block_N = block->N; // Non abbiamo più bisogno di questo
 
             for (int i = 0; i < num_rows; i++) {
                 double sum = 0.0;
 
                 for (int j = 0; j < maxnz; j++) {
-                    const int idx = j * num_rows + i;
+                    const int idx = i * maxnz + j;
                     const int col = block_JA[idx];
                     sum += block_AS[idx] * x[col];
-                    // }
                 }
 
                 y[row_offset + i] = sum;
@@ -398,28 +406,28 @@ void spmv_hll(const ELLPACKBlock *blocks, const double *x, double *y, int num_th
 
 int prepare_thread_distribution_hll(const HLLMatrix *matrix, int num_threads,
                                    int **thread_block_start, int **thread_block_end) {
-    // Verifica parametri e allocazione memoria
+    // Verifica parametri
     if (!matrix || num_threads <= 0 || !thread_block_start || !thread_block_end) {
         printf("Errore: parametri non validi in prepare_thread_distribution_hll\n");
         return 0;
     }
 
-    // Usa meno thread se ci sono meno blocchi che thread
-    if (matrix->num_blocks < num_threads) {
-        num_threads = matrix->num_blocks;
-    }
+    // Limita il numero di thread se ci sono meno blocchi che thread
+    num_threads = (matrix->num_blocks < num_threads) ? matrix->num_blocks : num_threads;
 
     // Allocazione memoria
     *thread_block_start = malloc((size_t)num_threads * sizeof(int));
     *thread_block_end = malloc((size_t)num_threads * sizeof(int));
     int *thread_nnz = malloc((size_t)num_threads * sizeof(int));
+    int *nnz_per_block = malloc(matrix->num_blocks * sizeof(int));
 
-    if (*thread_block_start == NULL || *thread_block_end == NULL || thread_nnz == NULL) {
+    if (!*thread_block_start || !*thread_block_end || !thread_nnz || !nnz_per_block) {
         // Gestione errore allocazione
-        if (*thread_block_start) free(*thread_block_start);
-        if (*thread_block_end) free(*thread_block_end);
-        if (thread_nnz) free(thread_nnz);
-        printf("Errore: allocazione memoria fallita in prepare_thread_distribution_hll\n");
+        free(*thread_block_start); *thread_block_start = NULL;
+        free(*thread_block_end); *thread_block_end = NULL;
+        free(thread_nnz);
+        free(nnz_per_block);
+        printf("Errore: allocazione memoria fallita\n");
         return 0;
     }
 
@@ -432,15 +440,6 @@ int prepare_thread_distribution_hll(const HLLMatrix *matrix, int num_threads,
 
     // Calcolo del numero totale di elementi non zero effettivi
     long long total_nnz = 0;
-    int *nnz_per_block = malloc(matrix->num_blocks * sizeof(int));
-
-    if (!nnz_per_block) {
-        free(*thread_block_start);
-        free(*thread_block_end);
-        free(thread_nnz);
-        printf("Errore: allocazione memoria fallita per nnz_per_block\n");
-        return 0;
-    }
 
     // Contiamo gli elementi non zero effettivi per ogni blocco
     for (int b = 0; b < matrix->num_blocks; b++) {
@@ -465,7 +464,7 @@ int prepare_thread_distribution_hll(const HLLMatrix *matrix, int num_threads,
         total_nnz += block_nnz;
     }
 
-    // Numero target di elementi non zero per thread (divisione con arrotondamento per eccesso)
+    // Numero target di elementi non zero per thread
     const long long nnz_per_thread = (total_nnz + num_threads - 1) / num_threads;
 
     // Distribuzione dei blocchi in base agli NNZ
@@ -473,7 +472,7 @@ int prepare_thread_distribution_hll(const HLLMatrix *matrix, int num_threads,
     long long current_nnz = 0;
 
     for (int b = 0; b < matrix->num_blocks; b++) {
-        // Imposta il blocco di inizio per il thread corrente se non è ancora impostato
+        // Imposta il blocco di inizio per il thread corrente
         if ((*thread_block_start)[current_thread] == -1) {
             (*thread_block_start)[current_thread] = b;
         }
@@ -483,7 +482,7 @@ int prepare_thread_distribution_hll(const HLLMatrix *matrix, int num_threads,
 
         // Se questo thread ha raggiunto il target e non è l'ultimo thread
         if (current_nnz >= nnz_per_thread && current_thread < num_threads - 1) {
-            (*thread_block_end)[current_thread] = b + 1; // Fine è esclusiva
+            (*thread_block_end)[current_thread] = b + 1;
             current_thread++;
             current_nnz = 0;
         }
@@ -495,11 +494,10 @@ int prepare_thread_distribution_hll(const HLLMatrix *matrix, int num_threads,
         current_thread++;
     }
 
-    // Determinare quanti thread sono effettivamente utilizzati
+    // Compattazione degli array
     int valid_threads = 0;
     for (int t = 0; t < num_threads; t++) {
         if ((*thread_block_start)[t] != -1 && (*thread_block_end)[t] != -1 && thread_nnz[t] > 0) {
-            // Mantieni i dati dei thread validi compattando gli array
             if (valid_threads != t) {
                 (*thread_block_start)[valid_threads] = (*thread_block_start)[t];
                 (*thread_block_end)[valid_threads] = (*thread_block_end)[t];
@@ -509,40 +507,16 @@ int prepare_thread_distribution_hll(const HLLMatrix *matrix, int num_threads,
         }
     }
 
-    // Aggiorna il numero effettivo di thread utilizzati
-    num_threads = valid_threads;
-
-    // Ottimizzazione: bilanciamento del carico tra thread adiacenti
-    for (int t = 0; t < num_threads - 1; t++) {
-        // Verifica se il thread successivo ha significativamente più lavoro (più di 1.5x)
-        if (thread_nnz[t+1] > thread_nnz[t] * 1.5) {
-            int start_block = (*thread_block_start)[t+1];
-            int block_nnz = nnz_per_block[start_block];
-
-            // Sposta solo il blocco se non sovraccarica il thread corrente
-            if (thread_nnz[t] + block_nnz <= nnz_per_thread * 1.2) {
-                // Sposta un blocco dal thread successivo al thread corrente
-                (*thread_block_end)[t]++;
-                (*thread_block_start)[t+1]++;
-
-                // Aggiorna i conteggi NNZ
-                thread_nnz[t] += block_nnz;
-                thread_nnz[t+1] -= block_nnz;
-            }
-        }
-    }
-
     // Stampe dettagliate per ogni thread
     printf("\n--- Dettagli distribuzione thread per HLL ---\n");
     printf("Thread attivi: %d (su %d richiesti inizialmente)\n", valid_threads, num_threads);
     printf("Numero totale di nnz: %lld\n", total_nnz);
     printf("Numero totale di blocchi: %d\n\n", matrix->num_blocks);
 
-    for (int t = 0; t < num_threads; t++) {
+    for (int t = 0; t < valid_threads; t++) {
         int num_blocks = (*thread_block_end)[t] - (*thread_block_start)[t];
         long long actual_nnz = 0;
 
-        // Calcola il numero effettivo di nnz per questo thread
         for (int b = (*thread_block_start)[t]; b < (*thread_block_end)[t]; b++) {
             actual_nnz += nnz_per_block[b];
         }
@@ -555,40 +529,11 @@ int prepare_thread_distribution_hll(const HLLMatrix *matrix, int num_threads,
                 actual_nnz,
                 actual_nnz * 100.0 / total_nnz);
     }
-
     printf("--- Fine dettagli distribuzione HLL ---\n\n");
 
     free(nnz_per_block);
     free(thread_nnz);
     return valid_threads;
-}
-
-//Funzione per stampare i contenuti di una matrice HLL
-void printHLLMatrix(HLLMatrix *hll) {
-        printf("HLL Matrix con %d blocchi:\n", hll->num_blocks);
-
-        for (int b = 0; b < hll->num_blocks; b++) {
-            ELLPACKBlock *block = &hll->blocks[b];
-            printf("\nBlocco %d (%d righe, %d colonne, MAXNZ=%d):\n",
-                   b, block->M, block->N, block->MAXNZ);
-
-            for (int i = 0; i < block->M; i++) {
-                printf("Riga %d: ", i);
-
-                // Iteriamo attraverso i non-zeri in questa riga
-                for (int j = 0; j < block->MAXNZ; j++) {
-                    // Calcoliamo l'indice corretto nell'array linearizzato con layout trasposto
-                    int idx = j * block->M + i;
-                    if (block->JA[idx] >= 0 && block->JA[idx] < block->N) {
-                        printf("(%d, %.6f) ", block->JA[idx], block->AS[idx]);
-                    } else {
-                        printf("(padding, %.6f) ", block->AS[idx]); // o altro messaggio per indicare padding
-                    }
-                }
-                printf("\n");
-            }
-        }
-    sleep(3);
 }
 
 

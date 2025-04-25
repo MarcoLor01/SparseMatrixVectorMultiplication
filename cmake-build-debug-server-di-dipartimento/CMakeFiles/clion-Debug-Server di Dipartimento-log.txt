@@ -1,0 +1,15 @@
+/usr/bin/cmake -DCMAKE_BUILD_TYPE=Debug -G "Unix Makefiles" -S /tmp/tmp.J90RhNJ2kq -B /tmp/tmp.J90RhNJ2kq/cmake-build-debug-server-di-dipartimento
+-- The C compiler identification is GNU 11.5.0
+-- The CUDA compiler identification is unknown
+CMake Error at /usr/share/cmake/Modules/CMakeDetermineCUDACompiler.cmake:603 (message):
+  Failed to detect a default CUDA architecture.
+
+
+
+  Compiler output:
+
+Call Stack (most recent call first):
+  CMakeLists.txt:2 (project)
+
+
+-- Configuring incomplete, errors occurred!

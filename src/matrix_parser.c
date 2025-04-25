@@ -148,7 +148,7 @@ int read_matrix_market(const char *filename, PreMatrix *mat) {
     return 0;
 }
 
-void print_pre_matrix(const PreMatrix *mat, bool const full_print) {
+void print_pre_matrix(PreMatrix *mat, bool const full_print) {
     printf("Dimensioni matrice: %d x %d\n", mat->M, mat->N);
     printf("Numero di elementi non-zero: %d\n", mat->nz);
     printf("Matrix type: %s\n", mm_typecode_to_str(mat->type));

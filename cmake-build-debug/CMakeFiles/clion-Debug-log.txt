@@ -1,20 +1,36 @@
 "C:\Users\HP\AppData\Local\JetBrains\CLion 2024.2.2\bin\cmake\win\x64\bin\cmake.exe" -DCMAKE_BUILD_TYPE=Debug "-DCMAKE_MAKE_PROGRAM=C:/Users/HP/AppData/Local/JetBrains/CLion 2024.2.2/bin/ninja/win/x64/ninja.exe" -G Ninja -DPython_EXECUTABLE=C:/Users/HP/CLionProjects/SpMVParallel/venv/Scripts/python.exe -DPython3_EXECUTABLE=C:/Users/HP/CLionProjects/SpMVParallel/venv/Scripts/python.exe -S C:\Users\HP\CLionProjects\SpMVParallel -B C:\Users\HP\CLionProjects\SpMVParallel\cmake-build-debug
--- The C compiler identification is GNU 13.1.0
--- Detecting C compiler ABI info
--- Detecting C compiler ABI info - done
--- Check for working C compiler: C:/Users/HP/AppData/Local/JetBrains/CLion 2024.2.2/bin/mingw/bin/gcc.exe - skipped
--- Detecting C compile features
--- Detecting C compile features - done
--- Found OpenMP_C: -fopenmp (found version "4.5")
--- Found OpenMP: TRUE (found version "4.5")
--- Building on host: LAPTOP-E4GO590A
--- Configuring done (12.7s)
--- Generating done (0.0s)
-CMake Warning:
-  Manually-specified variables were not used by the project:
+CMake Error at C:/Users/HP/AppData/Local/JetBrains/CLion 2024.2.2/bin/cmake/win/x64/share/cmake-3.29/Modules/CMakeDetermineCompilerId.cmake:814 (message):
+  Compiling the CUDA compiler identification source file
+  "CMakeCUDACompilerId.cu" failed.
 
-    Python3_EXECUTABLE
-    Python_EXECUTABLE
+  Compiler: C:/Program Files/NVIDIA GPU Computing
+  Toolkit/CUDA/v12.8/bin/nvcc.exe
+
+  Build flags:
+
+  Id flags: --keep;--keep-dir;tmp -v
 
 
--- Build files have been written to: C:/Users/HP/CLionProjects/SpMVParallel/cmake-build-debug
+
+  The output was:
+
+  1
+
+  nvcc warning : Support for offline compilation for architectures prior to
+  '<compute/sm/lto>_75' will be removed in a future release (Use
+  -Wno-deprecated-gpu-targets to suppress warning).
+
+  nvcc fatal : Cannot find compiler 'cl.exe' in PATH
+
+
+
+
+
+Call Stack (most recent call first):
+  C:/Users/HP/AppData/Local/JetBrains/CLion 2024.2.2/bin/cmake/win/x64/share/cmake-3.29/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)
+  C:/Users/HP/AppData/Local/JetBrains/CLion 2024.2.2/bin/cmake/win/x64/share/cmake-3.29/Modules/CMakeDetermineCompilerId.cmake:53 (__determine_compiler_id_test)
+  C:/Users/HP/AppData/Local/JetBrains/CLion 2024.2.2/bin/cmake/win/x64/share/cmake-3.29/Modules/CMakeDetermineCUDACompiler.cmake:131 (CMAKE_DETERMINE_COMPILER_ID)
+  CMakeLists.txt:2 (project)
+
+
+-- Configuring incomplete, errors occurred!

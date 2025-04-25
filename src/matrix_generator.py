@@ -4,8 +4,8 @@ from scipy import sparse
 import os
 import datetime
 
-M = 4
-N = 4
+M = 10
+N = 10
 
 class MTXGenerator:
     def __init__(self):
@@ -275,7 +275,7 @@ if __name__ == "__main__":
     csr_matrix = generator.mtx_to_csr(general_mtx)
     print("Matrice generale:")
     generator.print_csr_info(csr_matrix)
-    x = np.array([1,1,1,1])
+    x = np.array([1,1,1,1,5,6,7,8,9,10])
     y = csr_matrix @ x
     print("Vettore risultante SpMV:", np.array2string(y, precision=3))
 
@@ -283,7 +283,7 @@ if __name__ == "__main__":
     csr_matrix = generator.mtx_to_csr(pattern_mtx)
     print("Matrice pattern:")
     generator.print_csr_info(csr_matrix)
-    x = np.array([1,1,1,1])
+    x = np.array([1,1,1,1,5,6,7,8,9,10])
     y = csr_matrix @ x
     print("Vettore risultante SpMV:", np.array2string(y, precision=3))
 
@@ -291,7 +291,7 @@ if __name__ == "__main__":
     csr_matrix = generator.mtx_to_csr(symmetric_mtx)
     print("Matrice simmetrica: ")
     generator.print_csr_info(csr_matrix)
-    x = np.array([1,1,1,1])
+    x = np.array([1,1,1,1,5,6,7,8,9,10])
     y = csr_matrix @ x
     print("Vettore risultante SpMV:", np.array2string(y, precision=3))
 
