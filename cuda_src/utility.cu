@@ -191,21 +191,17 @@ void write_results_to_csv(const char *matrix_name, const int num_rows, const int
                           const double flops_warp_csr, const double flops_row_hll, const double flops_warp_hll, const double flops_warp_csr_shared,
                           const double flops_warp_shared_hll,
                           const char *output_file) {
-    const int file_exists = access(output_file, F_OK) != -1;
-    FILE *fp;
-    if (file_exists) {
-        fp = fopen(output_file, "a");  // Modalità append per file esistenti
-    } else {
-        fp = fopen(output_file, "w");  // Modalità write per nuovi file
-    }
+    FILE *fp = fopen(output_file, "a+");  // Append + read
 
     if (fp == NULL) {
         printf("Errore nell'apertura del file %s\n", output_file);
-        return;
+    return;
     }
 
-    // Scrivi l'intestazione se il file è nuovo
-    if (!file_exists) {
+    // Verifica se il file è vuoto per decidere se scrivere l'intestazione
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    if (size == 0) {
         fprintf(fp, "matrix_name,rows,cols,nonzeros,"
                     "time_serial,time_serial_hll,time_row_csr,time_warp_csr,time_warp_shared_csr, time_row_hll,time_warp_hll,time_warp_shared_hll,"
                     "flops_serial,avg_flops_hll_serial,flops_row_csr,flops_warp_csr,flops_warp_csr_shared,flops_row_hll,flops_warp_hll,flops_warp_shared_hll\n");

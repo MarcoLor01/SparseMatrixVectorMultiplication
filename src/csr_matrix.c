@@ -18,9 +18,9 @@ void init_csr_matrix(CSRMatrix *mat) {
 }
 
 void free_csr_matrix(CSRMatrix *mat) {
-    free(mat->row_ptr);
-    free(mat->col_idx);
-    free(mat->values);
+    FREE_CHECK(mat->row_ptr);
+    FREE_CHECK(mat->col_idx);
+    FREE_CHECK(mat->values);
     init_csr_matrix(mat);
 }
 
@@ -119,7 +119,7 @@ int convert_in_csr(const PreMatrix *pre, CSRMatrix *csr, const char* matrix_name
         row_counter[row]++;
     }
 
-    free(row_counter);
+    FREE_CHECK(row_counter);
 
     // Ordina gli elementi di ciascuna riga per indice di colonna
     for (int i = 0; i < csr->M; i++) {
@@ -189,9 +189,9 @@ int prepare_thread_distribution(const int num_row, const int *row_ptr, int num_t
 
     if (!*thread_row_start || !*thread_row_end || !thread_nnz) {
         // Pulizia in caso di fallimento
-        free(*thread_row_start); *thread_row_start = NULL;
-        free(*thread_row_end); *thread_row_end = NULL;
-        free(thread_nnz);
+        FREE_CHECK(*thread_row_start);
+        FREE_CHECK(*thread_row_end);
+        FREE_CHECK(thread_nnz);
         return 0;
     }
 
@@ -271,7 +271,7 @@ int prepare_thread_distribution(const int num_row, const int *row_ptr, int num_t
     }
     printf("--- Fine dettagli distribuzione ---\n\n");
 
-    free(thread_nnz);
+    FREE_CHECK(thread_nnz);
     return valid_threads;
 }
 

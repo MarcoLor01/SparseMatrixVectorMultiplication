@@ -62,7 +62,7 @@ int convert_to_hll(const PreMatrix *pre, HLLMatrix *hll) {
             row_counts[pre->I[i]]++; //Quanti elementi NZ ci sono per riga
         } else {
             printf("ERRORE: Indice di riga non valido: %d (max: %d)\n", pre->I[i], M-1);
-            free(row_counts);
+            FREE_CHECK(row_counts);
             free_hll_matrix(hll);
             return -1;
         }
@@ -94,7 +94,7 @@ int convert_to_hll(const PreMatrix *pre, HLLMatrix *hll) {
             if (!hll->blocks[b].JA) {
                 printf("ERRORE: Allocazione fallita per JA del blocco %d\n", b);
                 free_hll_matrix(hll);
-                free(row_counts);
+                FREE_CHECK(row_counts);
                 return -1;
             }
 
@@ -103,7 +103,7 @@ int convert_to_hll(const PreMatrix *pre, HLLMatrix *hll) {
             if (!hll->blocks[b].AS) {
                 printf("ERRORE: Allocazione fallita per AS del blocco %d\n", b);
                 free_hll_matrix(hll);
-                free(row_counts);
+                FREE_CHECK(row_counts);
                 return -1;
             }
 
@@ -124,7 +124,7 @@ int convert_to_hll(const PreMatrix *pre, HLLMatrix *hll) {
     if (!last_valid_col) {
         printf("Errore di allocazione memoria per last_valid_col\n");
         free_hll_matrix(hll);
-        free(row_counts);
+        FREE_CHECK(row_counts);
         return -1;
     }
 
@@ -138,8 +138,8 @@ int convert_to_hll(const PreMatrix *pre, HLLMatrix *hll) {
     if (!current_pos) {
         printf("Errore di allocazione memoria per current_pos\n");
         free_hll_matrix(hll);
-        free(row_counts);
-        free(last_valid_col);
+        FREE_CHECK(row_counts);
+        FREE_CHECK(last_valid_col);
         return -1;
     }
 
@@ -149,9 +149,9 @@ int convert_to_hll(const PreMatrix *pre, HLLMatrix *hll) {
     if (!sorted_elements) {
         printf("Errore di allocazione memoria per sorted_elements\n");
         free_hll_matrix(hll);
-        free(row_counts);
-        free(last_valid_col);
-        free(current_pos);
+        FREE_CHECK(row_counts);
+        FREE_CHECK(last_valid_col);
+        FREE_CHECK(current_pos);
         return -1;
     }
 
@@ -162,13 +162,13 @@ int convert_to_hll(const PreMatrix *pre, HLLMatrix *hll) {
                 printf("Errore di allocazione memoria per sorted_elements[%d]\n", i);
                 // Pulizia memoria già allocata
                 for (int j = 0; j < i; j++) {
-                    if (sorted_elements[j]) free(sorted_elements[j]);
+                    if (sorted_elements[j]) FREE_CHECK(sorted_elements[j]);
                 }
-                free(sorted_elements);
+                FREE_CHECK(sorted_elements);
                 free_hll_matrix(hll);
-                free(row_counts);
-                free(last_valid_col);
-                free(current_pos);
+                FREE_CHECK(row_counts);
+                FREE_CHECK(last_valid_col);
+                FREE_CHECK(current_pos);
                 return -1;
             }
         } else {
@@ -245,10 +245,10 @@ int convert_to_hll(const PreMatrix *pre, HLLMatrix *hll) {
     for (int i = 0; i < M; i++) {
         if (sorted_elements[i]) free(sorted_elements[i]);
     }
-    free(sorted_elements);
-    free(row_counts);
-    free(current_pos);
-    free(last_valid_col);
+    FREE_CHECK(sorted_elements);
+    FREE_CHECK(row_counts);
+    FREE_CHECK(current_pos);
+    FREE_CHECK(last_valid_col);
     return 0;
 }
 
@@ -270,16 +270,16 @@ void free_hll_matrix(HLLMatrix *hll) {
     if (hll->blocks) {
         for (int b = 0; b < hll->num_blocks; b++) {
             if (hll->blocks[b].JA) {
-                free(hll->blocks[b].JA);
+                FREE_CHECK(hll->blocks[b].JA);
                 hll->blocks[b].JA = NULL;
             }
 
             if (hll->blocks[b].AS) {
-                free(hll->blocks[b].AS);
+                FREE_CHECK(hll->blocks[b].AS);
                 hll->blocks[b].AS = NULL;
             }
         }
-        free(hll->blocks);
+        FREE_CHECK(hll->blocks);
         hll->blocks = NULL;
     }
     // Resetta i valori

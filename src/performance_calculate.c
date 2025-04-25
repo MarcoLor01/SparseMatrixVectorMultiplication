@@ -6,6 +6,7 @@
 #include "performance_calculate.h"
 #include <stdlib.h>
 #include <math.h>
+#include <utility.h>
 
 MetricStats metrics[NUM_METRICS];
 
@@ -27,7 +28,7 @@ void initialize_metrics() {
 
 void cleanup_metrics() {
     for (int i = 0; i < NUM_METRICS; i++) {
-        free(metrics[i].values);
+        FREE_CHECK(metrics[i].values);
         metrics[i].values = NULL;
     }
 }

@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include "mmio.h"
-
+#include "utility.cuh"
 void init_pre_matrix(PreMatrix *mat) {
     mat->M = 0;
     mat->N = 0;
@@ -16,9 +16,9 @@ void init_pre_matrix(PreMatrix *mat) {
 }
 
 void free_pre_matrix(PreMatrix *mat) {
-    free(mat->I);
-    free(mat->J);
-    free(mat->val);
+    FREE_CHECK(mat->I);
+    FREE_CHECK(mat->J);
+    FREE_CHECK(mat->val);
     init_pre_matrix(mat);
 }
 
@@ -57,9 +57,9 @@ int read_matrix_market(const char *filename, PreMatrix *mat) {
     int *temp_J = (int *)malloc(max_nz * sizeof(int));
     double *temp_val = (double *)malloc(max_nz * sizeof(double));
     if (!temp_I || !temp_J || !temp_val) {
-        free(temp_I);
-        free(temp_J);
-        free(temp_val);
+        FREE_CHECK(temp_I);
+        FREE_CHECK(temp_J);
+        FREE_CHECK(temp_val);
         fclose(f);
         printf("Errore nell'allocazione della memoria\n");
         return -1;
@@ -74,9 +74,9 @@ int read_matrix_market(const char *filename, PreMatrix *mat) {
                 char buffer[100];
                 fgets(buffer, sizeof(buffer), f);
                 printf("Contenuto della riga problematica: %s\n", buffer);
-                free(temp_I);
-                free(temp_J);
-                free(temp_val);
+                FREE_CHECK(temp_I);
+                FREE_CHECK(temp_J);
+                FREE_CHECK(temp_val);
                 fclose(f);
                 return -1;
             }
@@ -88,9 +88,9 @@ int read_matrix_market(const char *filename, PreMatrix *mat) {
                 char buffer[100];
                 fgets(buffer, sizeof(buffer), f);
                 printf("Contenuto della riga problematica: %s\n", buffer);
-                free(temp_I);
-                free(temp_J);
-                free(temp_val);
+                FREE_CHECK(temp_I);
+                FREE_CHECK(temp_J);
+                FREE_CHECK(temp_val);
                 fclose(f);
                 return -1;
             }
@@ -104,9 +104,9 @@ int read_matrix_market(const char *filename, PreMatrix *mat) {
             temp_J[actual_nz] < 0 || temp_J[actual_nz] >= mat->N) {
             printf("Errore: Indice fuori range (%d,%d) per matrice %dx%d\n",
                    temp_I[actual_nz] + 1, temp_J[actual_nz] + 1, mat->M, mat->N);
-            free(temp_I);
-            free(temp_J);
-            free(temp_val);
+            FREE_CHECK(temp_I);
+            FREE_CHECK(temp_J);
+            FREE_CHECK(temp_val);
             fclose(f);
             return -1;
         }
@@ -130,12 +130,12 @@ int read_matrix_market(const char *filename, PreMatrix *mat) {
 
     if (!mat->I || !mat->J || !mat->val) {
         printf("Errore di allocazione memoria\n");
-        free(temp_I);
-        free(temp_J);
-        free(temp_val);
-        free(mat->I);
-        free(mat->J);
-        free(mat->val);
+        FREE_CHECK(temp_I);
+        FREE_CHECK(temp_J);
+        FREE_CHECK(temp_val);
+        FREE_CHECK(mat->I);
+        FREE_CHECK(mat->J);
+        FREE_CHECK(mat->val);
         return -1;
     }
 
@@ -143,9 +143,9 @@ int read_matrix_market(const char *filename, PreMatrix *mat) {
     memcpy(mat->J, temp_J, mat->nz * sizeof(int));
     memcpy(mat->val, temp_val, mat->nz * sizeof(double));
 
-    free(temp_I);
-    free(temp_J);
-    free(temp_val);
+    FREE_CHECK(temp_I);
+    FREE_CHECK(temp_J);
+    FREE_CHECK(temp_val);
     return 0;
 }
 

@@ -15,9 +15,9 @@ void init_csr_matrix(CSRMatrix *mat) {
 }
 
 void free_csr_matrix(CSRMatrix *mat) {
-    free(mat->row_ptr);
-    free(mat->col_idx);
-    free(mat->values);
+    FREE_CHECK(mat->row_ptr);
+    FREE_CHECK(mat->col_idx);
+    FREE_CHECK(mat->values);
     init_csr_matrix(mat);
 }
 
@@ -64,7 +64,7 @@ int convert_in_csr(const PreMatrix *pre, CSRMatrix *csr) {
         row_counter[row]++;
     }
 
-    free(row_counter);
+    FREE_CHECK(row_counter);
 
     // Ordina gli elementi di ciascuna riga per indice di colonna
     for (int i = 0; i < csr->M; i++) {

@@ -127,21 +127,18 @@ void write_results_to_csv(const char *matrix_name, const int num_rows, const int
                           const double speedup_simd, const double speedup_hll, const double speedup_hll_simd, const double efficiency_parallel,
                           const double efficiency_simd, const double efficiency_hll, const double efficiency_hll_simd, const double flops_serial, const double avg_flops_hll_serial,
                           const double flops_parallel, const double flops_parallel_simd, const double flops_parallel_hll, const double flops_parallel_hll_simd, const char *output_file) {
-    const int file_exists = access(output_file, F_OK) != -1;
-    FILE *fp;
-    if (file_exists) {
-        fp = fopen(output_file, "a");  // Modalità append per file esistenti
-    } else {
-        fp = fopen(output_file, "w");  // Modalità write per nuovi file
-    }
+    FILE *fp = fopen(output_file, "a+");  // Append + read
 
     if (fp == NULL) {
         printf("Errore nell'apertura del file %s\n", output_file);
         return;
     }
 
-    // Scrivi l'intestazione se il file è nuovo
-    if (!file_exists) {
+    // Verifica se il file è vuoto per decidere se scrivere l'intestazione
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    if (size == 0) {
+        // Scrivi l'intestazione se il file è nuovo o vuoto
         fprintf(fp, "matrix_name,rows,cols,nonzeros,num_threads,"
                     "time_serial,time_serial_hll,time_parallel,time_parallel_simd,time_parallel_hll,time_parallel_hll_simd,"
                     "stddev_parallel_csr,stddev_parallel_hll,stddev_parallel_simd,stddev_parallel_simd_hll,"
@@ -188,6 +185,6 @@ void clear_cache(size_t clear_size_mb) {
         dummy_buffer[i] = (char)(i % 256);
     }
 
-    free(dummy_buffer);
+    FREE_CHECK(dummy_buffer);
     printf("Cache clearing attempt finished.\n");
 }
