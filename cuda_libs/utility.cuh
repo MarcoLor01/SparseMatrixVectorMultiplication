@@ -1,6 +1,6 @@
 #ifndef UTILITY_CUH
 #define UTILITY_CUH
-#include <stdbool.h>
+
 
 #define MAX_CACHE 1024
 #define WARP_SIZE 32
@@ -26,15 +26,6 @@ do {                              \
 
 void init_vector_at_one(double *v, const int size);
 
-bool checkDifferences(
-    const double* ref,
-    const double* res,
-    int n,
-    double abs_tol = 1e-9, // Tolleranza assoluta di default (più stringente)
-    double rel_tol = 1e-7, // Tolleranza relativa di default (più stringente)
-    bool print_summary = true,
-    bool print_first_failure = true);
-
 void write_results_to_csv(const char *matrix_name, const int num_rows, const int num_cols, const int nz,
                           const double time_serial, const double time_serial_hll, const double time_row_csr,
                           const double time_warp_csr, const double time_warp_csr_shared, const double time_warp_shared_hll,
@@ -49,4 +40,7 @@ void swap_double(double *a, double *b);
 size_t partition(int *col_idx, double *values, size_t low, size_t high);
 void sort_row(int *col_idx, double *values, size_t low, size_t high);
 void clear_gpu_cache(size_t clear_size_mb);
+int process_matrix_file(const char *filepath, PreMatrix *pre_mat);
+void create_directory(const char *path);
+int clear_directory(const char *path);
 #endif //UTILITY_CUH

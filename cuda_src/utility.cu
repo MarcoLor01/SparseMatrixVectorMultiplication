@@ -1,12 +1,19 @@
 //
 // Created by HP on 04/03/2025.
 //
-
-#include <stdio.h>
 #include "utility.h"
+#include <stdbool.h>
+#include <errno.h>
 #include <unistd.h>
 #include <math.h>
-#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <matrix_parser.cuh>
+
+
 #define MAX_CACHE 1024
 // Inizializza vettori a 1
 void init_vector_at_one(double *v, const int size) {
@@ -85,104 +92,6 @@ void sort_row(int *col_idx, double *values, size_t low, size_t high) {
     }
 }
 
-
-bool checkDifferences(
-    const double* ref,
-    const double* res,
-    int n,
-    double abs_tol = 1e-5, // Tolleranza assoluta di default (più stringente)
-    double rel_tol = 1e-4, // Tolleranza relativa di default (più stringente)
-    bool print_summary = true,
-    bool print_first_failure = false)
-{
-    // Caso base: nessun elemento da confrontare
-    if (n <= 0) {
-        if (print_summary) {
-            printf("--- Comparison Summary ---\n");
-            printf("Vector size        : 0\n");
-            printf("Result             : PASS (empty vectors)\n");
-            printf("------------------------\n");
-        }
-        return true;
-    }
-
-    // Variabili per tracciare gli errori
-    double max_abs_err = 0.0;
-    double max_rel_err = 0.0;
-    int    diff_count = 0;
-    int    first_failure_idx = -1; // Indice del primo elemento che fallisce il test
-
-    // Itera su tutti gli elementi
-    for (int i = 0; i < n; ++i) {
-        // Calcola la differenza assoluta
-        double abs_diff = std::fabs(ref[i] - res[i]);
-        double ref_abs = std::fabs(ref[i]);
-
-        // Aggiorna l'errore massimo assoluto
-        if (abs_diff > max_abs_err) {
-            max_abs_err = abs_diff;
-        }
-
-        // Calcola e aggiorna l'errore relativo massimo, solo se il riferimento non è troppo vicino a zero
-        // L'errore relativo perde significato o causa divisione per zero se ref[i] è molto piccolo
-        if (ref_abs > abs_tol) { // Usiamo abs_tol come soglia per considerare il riferimento non-zero
-            double rel_diff = abs_diff / ref_abs;
-             if (rel_diff > max_rel_err) {
-                max_rel_err = rel_diff;
-            }
-        }
-        // Verifica se l'elemento corrente supera la tolleranza combinata
-        // Logica: la differenza è accettabile se è minore della tolleranza assoluta
-        // O se è minore della tolleranza relativa *moltiplicata* per la grandezza del riferimento.
-        // Formula compatta: absolute(ref - res) <= (abs_tol + rel_tol * absolute(ref))
-        if (abs_diff > (abs_tol + rel_tol * ref_abs)) {
-            // Errore: l'elemento supera la tolleranza combinata
-            diff_count++;
-            // Memorizza l'indice del primo errore trovato
-            if (first_failure_idx == -1) {
-                first_failure_idx = i;
-            }
-        }
-    }
-
-    // Determina l'esito del confronto
-    bool passed = (diff_count == 0);
-
-    // Stampa un riepilogo
-    if (print_summary) {
-        printf("--- Comparison Summary ---\n");
-        printf("Vector size        : %d\n", n);
-        printf("Absolute Tolerance : %.3e\n", abs_tol);
-        printf("Relative Tolerance : %.3e\n", rel_tol);
-        printf("Max Absolute Error : %.10e\n", max_abs_err);
-        printf("Max Relative Error : %.10e (calculated where |ref| > %.1e)\n", max_rel_err, abs_tol);
-        printf("Elements exceeding : %d (%.4f %%)\n", diff_count, n > 0 ? (double)diff_count * 100.0 / n : 0.0);
-        printf("Result             : %s\n", passed ? "PASS" : "FAIL");
-        // Se fallito e richiesto, stampa i dettagli del primo errore
-        if (!passed && print_first_failure && first_failure_idx != -1) {
-             printf("------------------------\n");
-             printf("First failure at index %d:\n", first_failure_idx);
-             printf("  Reference: %.15f\n", ref[first_failure_idx]);
-             printf("  Result   : %.15f\n", res[first_failure_idx]);
-             double first_fail_abs_diff = std::fabs(ref[first_failure_idx] - res[first_failure_idx]);
-             double first_fail_ref_abs = std::fabs(ref[first_failure_idx]);
-             printf("  Abs Diff : %.10e\n", first_fail_abs_diff);
-             // Stampa errore relativo solo se il riferimento non era troppo piccolo
-             if (first_fail_ref_abs > abs_tol) {
-                printf("  Rel Diff : %.10e\n", first_fail_abs_diff / first_fail_ref_abs);
-             } else {
-                printf("  Rel Diff : (not computed, |ref| <= abs_tol)\n");
-             }
-             printf("  Tolerance: %.10e\n", (abs_tol + rel_tol * first_fail_ref_abs));
-
-        }
-        printf("------------------------\n");
-    }
-
-    // Restituisce true se nessun elemento ha superato la tolleranza, false altrimenti
-    return passed;
-}
-
 void write_results_to_csv(const char *matrix_name, const int num_rows, const int num_cols, const int nz,
                           const double time_serial, const double time_serial_hll, const double time_row_csr,
                           const double time_warp_csr, const double time_warp_csr_shared, const double time_warp_shared_hll,
@@ -253,6 +162,65 @@ void clear_gpu_cache(size_t clear_size_mb) {
     cudaFree(d_dummy_buffer);
 
     printf("GPU cache clearing attempt finished.\n");
+}
+
+int process_matrix_file(const char *filepath, PreMatrix *pre_mat) {
+    init_pre_matrix(pre_mat);
+
+    printf("\n===========================================\n");
+    printf("Elaborazione matrice: %s\n", filepath);
+    printf("===========================================\n");
+
+    if (read_matrix_market(filepath, pre_mat) != 0) {
+        printf("Errore nella lettura della matrice\n");
+        return -1;
+    }
+    return 0;
+}
+
+int clear_directory(const char *path) {
+    DIR *dir = opendir(path);
+    if (dir == NULL) {
+        perror("Errore nell'aprire la directory");
+        return -1;
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        // Evita di rimuovere "." e ".."
+        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+            char file_path[1024];
+            snprintf(file_path, sizeof(file_path), "%s/%s", path, entry->d_name);
+
+            if (remove(file_path) == -1) {
+                perror("Errore nell'eliminare il file");
+                closedir(dir);
+                return -1;
+            }
+        }
+    }
+
+    closedir(dir);
+    return 0;
+}
+
+// Funzione per svuotare il contenuto di una directory
+void create_directory(const char *path) {
+    if (mkdir(path, 0777) == -1) {
+        if (errno == EEXIST) {
+            printf("La directory 'result' esiste già. Svuotiamo il suo contenuto...\n");
+            if (clear_directory(path) == -1) {
+                printf("Errore nel svuotare la directory.\n");
+                exit(EXIT_FAILURE);
+            }
+            printf("La directory è stata svuotata.\n");
+        } else {
+            perror("Errore nella creazione della directory");
+            exit(EXIT_FAILURE);
+        }
+    } else {
+        printf("Directory 'result' creata con successo.\n");
+    }
 }
 
 

@@ -15,70 +15,18 @@
 #include <sys/types.h>
 #include <errno.h>
 
-int num_threads[] = {2, 4, 8, 16, 32, 40};
+int num_threads[] = {2,4,8,16,32,40};
 #define NUM_POSSIBLE_THREADS (sizeof(num_threads) / sizeof(num_threads[0]))
-#define NUM_ITERATION 100
-
-int process_matrix_file(const char *filepath, PreMatrix *pre_mat) {
-    init_pre_matrix(pre_mat);
-
-    printf("\n===========================================\n");
-    printf("Elaborazione matrice: %s\n", filepath);
-    printf("===========================================\n");
-
-    if (read_matrix_market(filepath, pre_mat) != 0) {
-        printf("Errore nella lettura della matrice\n");
-        return -1;
-    }
-    return 0;
-}
-
-int clear_directory(const char *path) {
-    DIR *dir = opendir(path);
-    if (dir == NULL) {
-        perror("Errore nell'aprire la directory");
-        return -1;
-    }
-
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
-        // Evita di rimuovere "." e ".."
-        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-            char file_path[1024];
-            snprintf(file_path, sizeof(file_path), "%s/%s", path, entry->d_name);
-
-            if (remove(file_path) == -1) {
-                perror("Errore nell'eliminare il file");
-                closedir(dir);
-                return -1;
-            }
-        }
-    }
-
-    closedir(dir);
-    return 0;
-}
+#define NUM_ITERATION 95 + ITERATION_SKIP
 
 int main() {
 
     struct dirent *dir;
     const char *directory_path = "../matrix_for_test/";
     //const char *directory_path = "../matrix_generated/";
-    if (mkdir("../result", 0777) == -1) {
-        if (errno == EEXIST) {
-            printf("La directory 'result' esiste già. Svuotiamo il suo contenuto...\n");
-            if (clear_directory("../result") == -1) {
-                printf("Errore nel svuotare la directory.\n");
-                exit(EXIT_FAILURE);
-            }
-            printf("La directory è stata svuotata.\n");
-        } else {
-            perror("Errore nella creazione della directory");
-            exit(EXIT_FAILURE);
-        }
-    } else {
-        printf("Directory 'result' creata con successo.\n");
-    }
+    const char *directory_result = "../result";
+
+    create_directory(directory_result);
 
     // Apertura directory contenente le matrici
     DIR *d = opendir(directory_path);
@@ -108,7 +56,6 @@ int main() {
             continue;
         }
 
-        print_pre_matrix(&pre_mat, false);
 
         // Conversione in formato CSR
         CSRMatrix csr_mat;
@@ -164,7 +111,7 @@ int main() {
                                    csr_mat.values, x, y_serial);
             double end = omp_get_wtime();
             double time_serial = end - start;
-            if(j > 5){
+            if(j > ITERATION_SKIP){
                 update_medium_metric(SERIAL_TIME, time_serial);
 
                 double flops_serial = calculate_flops(csr_mat.nz, time_serial);
@@ -173,12 +120,12 @@ int main() {
                 print_flops(flops_serial);
             }
         }
-        double avg_time_serial = get_metric_value(SERIAL_TIME);
-        double avg_flops_serial = calculate_flops(csr_mat.nz, avg_time_serial);
-        printf("\nTempo medio seriale CSR: %f secondi\n", avg_time_serial);
+        PerformanceMetrics perfMetricsCsr;
+        perfMetricsCsr.time = get_metric_value(SERIAL_TIME);
+        perfMetricsCsr.flops = calculate_flops(csr_mat.nz, perfMetricsCsr.time);
+        printf("\nTempo medio seriale CSR: %f secondi\n", perfMetricsCsr.time);
         printf("FLOPS medi seriali CSR: ");
-        print_flops(avg_flops_serial);
-
+        print_flops(perfMetricsCsr.flops);
 
 
         // ================================
@@ -195,22 +142,29 @@ int main() {
             double end = omp_get_wtime();
             double time_serial_hll = end - start;
 
-            double error_hll_serial = checkDifferences(y_hll, y_serial, pre_mat.M, true);
-            if(j > 5){
+            DiffMetrics diffMetricsSerialHll = computeDifferenceMetrics(y_serial, y_hll, csr_mat.M, 1e-5, 1e-4, true);
+            accumulateErrors(&diffMetricsSerialHll, SERIAL_HLL_TIME);
+
+            if(j > ITERATION_SKIP){
                 update_medium_metric(SERIAL_HLL_TIME, time_serial_hll);
                 double flops_hll_serial = calculate_flops(csr_mat.nz, time_serial_hll);
                 printf("Tempo esecuzione seriale HLL: %f secondi\n", time_serial_hll);
                 printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_hll_serial);
                 print_flops(flops_hll_serial);
-                printf("Errore relativo: %f\n", error_hll_serial);
+                printf("Errore relativo: %f\n", diffMetricsSerialHll.mean_rel_err);
+                printf("Errore assoluto: %f\n", diffMetricsSerialHll.mean_abs_err);
             }
         }
 
-        double avg_time_serial_hll = get_metric_value(SERIAL_HLL_TIME);
-        double avg_flops_hll_serial = calculate_flops(csr_mat.nz, avg_time_serial_hll);
-        printf("\nTempo medio seriale HLL: %f secondi\n", avg_time_serial_hll);
+        PerformanceMetrics perfMetricsHll;
+        perfMetricsHll.time = get_metric_value(SERIAL_HLL_TIME);
+        perfMetricsHll.flops = calculate_flops(csr_mat.nz, perfMetricsHll.time);
+        printf("\nTempo medio seriale HLL: %f secondi\n", perfMetricsHll.time);
         printf("FLOPS medi seriali HLL: ");
-        print_flops(avg_flops_hll_serial);
+        print_flops(perfMetricsHll.flops);
+        DiffMetrics mediumHllError = computeAverageErrors(SERIAL_HLL_TIME);
+        printf("\nErrore relativo medio seriale HLL: %f\n", mediumHllError.mean_rel_err);
+        printf("\nErrore assoluto medio seriale HLL: %f\n", mediumHllError.mean_abs_err);
 
 
 
@@ -250,40 +204,39 @@ int main() {
                                  thread_row_start, thread_row_end);
                 double end = omp_get_wtime();
                 double time_parallel_csr = end - start;
+				DiffMetrics diffMetricsParallelCsr = computeDifferenceMetrics(y_serial, y_parallel_csr, csr_mat.M, 1e-5, 1e-4, true);
+                accumulateErrors(&diffMetricsParallelCsr, PARALLEL_CSR_TIME);
 
-                double error_csr = checkDifferences(y_parallel_csr, y_serial, csr_mat.M, false);
-                if(j > 5){
+                if(j > ITERATION_SKIP){
                     update_medium_metric(PARALLEL_CSR_TIME, time_parallel_csr);
                     double flops_parallel = calculate_flops(csr_mat.nz, time_parallel_csr);
-                    double speedup_parallel = avg_time_serial / time_parallel_csr;
+                    double speedup_parallel = perfMetricsCsr.time / time_parallel_csr;
                     double efficiency_parallel = speedup_parallel / current_threads;
 
                     printf("Tempo esecuzione parallelo CSR: %f secondi\n", time_parallel_csr);
                     printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_parallel);
                     print_flops(flops_parallel);
-                    printf("Errore relativo: %f\n", error_csr);
+                    printf("Errore relativo: %f\n", diffMetricsParallelCsr.mean_rel_err);
+                    printf("Errore assoluto: %f\n", diffMetricsParallelCsr.mean_abs_err);
                     printf("Valore dello speed-up: %f\n", speedup_parallel);
                     printf("Valore efficienza: %f\n", efficiency_parallel);
                 }
-                update_metric_error(PARALLEL_CSR_TIME, error_csr);
             }
+			PerformanceMetrics perfMetricsCsrParallel;
+            perfMetricsCsrParallel.time = get_metric_value(PARALLEL_CSR_TIME);
+            perfMetricsCsrParallel.speedup = perfMetricsCsr.time / perfMetricsCsrParallel.time;
+            perfMetricsCsrParallel.efficiency = perfMetricsCsrParallel.speedup / current_threads;
+            perfMetricsCsrParallel.flops = calculate_flops(csr_mat.nz, perfMetricsCsrParallel.time);
 
-            double avg_time_parallel_csr = get_metric_value(PARALLEL_CSR_TIME);
-            double avg_speedup_parallel_csr = avg_time_serial / avg_time_parallel_csr;
-            double avg_efficiency_parallel_csr = avg_speedup_parallel_csr / current_threads;
-            double avg_flops_parallel = calculate_flops(csr_mat.nz, avg_time_parallel_csr);
-            double stddev_parallel_csr = get_metric_stddev(PARALLEL_CSR_TIME);
-            double medium_error = get_metric_error(PARALLEL_CSR_TIME);
-            double min_value = get_metric_min(PARALLEL_CSR_TIME);
-            printf("\nTempo medio parallelo CSR: %f secondi\n", avg_time_parallel_csr);
-            printf("Speedup medio: %f\n", avg_speedup_parallel_csr);
-            printf("Efficienza media: %f\n", avg_efficiency_parallel_csr);
+            printf("\nTempo medio parallelo CSR: %f secondi\n", perfMetricsCsrParallel.time);
+            printf("Speedup medio: %f\n", perfMetricsCsrParallel.speedup);
+            printf("Efficienza media: %f\n", perfMetricsCsrParallel.efficiency);
             printf("FLOPS medi: ");
-            print_flops(avg_flops_parallel);
-            printf("Deviazione standard tempo: %f secondi (%.2f%%)\n",
-            stddev_parallel_csr, 100.0 * stddev_parallel_csr / avg_time_parallel_csr);
-            printf("Errore medio: %f\n", medium_error);
-            printf("Valore minimo: %f\n", min_value);
+            print_flops(perfMetricsCsrParallel.flops);
+            DiffMetrics mediumCsrParallel = computeAverageErrors(PARALLEL_CSR_TIME);
+            printf("Errore relativo medio parallelo CSR: %f\n", mediumCsrParallel.mean_rel_err);
+            printf("Errore assoluto medio parallelo CSR: %f\n", mediumCsrParallel.mean_abs_err);
+
 
             // ================================
             // TEST 4: VERSIONE PARALLELA HLL
@@ -306,41 +259,36 @@ int main() {
                 double end = omp_get_wtime();
                 double time_parallel_hll = end - start;
 
-
-                double error_hll = checkDifferences(y_hll, y_serial, pre_mat.M, false);
-                if(j > 5){
+				DiffMetrics diffMetricsParallelHll = computeDifferenceMetrics(y_serial, y_hll, csr_mat.M, 1e-5, 1e-4, true);
+                if(j > ITERATION_SKIP){
                     update_medium_metric(PARALLEL_HLL_TIME, time_parallel_hll);
                     double flops_hll = calculate_flops(csr_mat.nz, time_parallel_hll);
-                    double speedup_hll = avg_time_serial_hll / time_parallel_hll;
+                    double speedup_hll = perfMetricsHll.time / time_parallel_hll;
                     double efficiency_hll = speedup_hll / current_threads;
 
                     printf("Tempo esecuzione parallelo HLL: %f secondi\n", time_parallel_hll);
                     printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_hll);
                     print_flops(flops_hll);
-                    printf("Errore relativo: %f\n", error_hll);
+                    printf("Errore relativo: %f\n", diffMetricsParallelHll.mean_rel_err);
                     printf("Valore dello speed-up: %f\n", speedup_hll);
                     printf("Valore efficienza: %f\n", efficiency_hll);
                 }
-                update_metric_error(PARALLEL_HLL_TIME, error_hll);
             }
 
+			PerformanceMetrics perfMetricsHllParallel;
+            perfMetricsHllParallel.time = get_metric_value(PARALLEL_HLL_TIME);
+            perfMetricsHllParallel.speedup = perfMetricsHll.time / perfMetricsHllParallel.time;
+            perfMetricsHllParallel.efficiency = perfMetricsHllParallel.speedup / current_threads;
+            perfMetricsHllParallel.flops = calculate_flops(csr_mat.nz, perfMetricsHllParallel.time);
 
-            double avg_time_parallel_hll = get_metric_value(PARALLEL_HLL_TIME);
-            double avg_speedup_hll = avg_time_serial_hll / avg_time_parallel_hll;
-            double avg_efficiency_hll = avg_speedup_hll / current_threads;
-            double avg_flops_hll = calculate_flops(csr_mat.nz, avg_time_parallel_hll);
-            double stddev_parallel_hll = get_metric_stddev(PARALLEL_HLL_TIME);
-            double min_value_hll = get_metric_min(PARALLEL_HLL_TIME);
-            double medium_error_hll = get_metric_error(PARALLEL_HLL_TIME);
-            printf("\nTempo medio parallelo HLL: %f secondi\n", avg_time_parallel_hll);
-            printf("Speedup medio: %f\n", avg_speedup_hll);
-            printf("Efficienza media: %f\n", avg_efficiency_hll);
+            printf("\nTempo medio parallelo HLL: %f secondi\n", perfMetricsHllParallel.time);
+            printf("Speedup medio: %f\n", perfMetricsHllParallel.speedup);
+            printf("Efficienza media: %f\n", perfMetricsHllParallel.efficiency);
             printf("FLOPS medi: ");
-            print_flops(avg_flops_hll);
-            printf("Deviazione standard tempo: %f secondi (%.2f%%)\n",
-            stddev_parallel_hll, 100.0 * stddev_parallel_hll / avg_time_parallel_hll);
-            printf("Errore medio: %f\n", medium_error_hll);
-            printf("Valore minimo: %f\n", min_value_hll);
+            print_flops(perfMetricsHllParallel.flops);
+            DiffMetrics mediumHllParallel = computeAverageErrors(PARALLEL_HLL_TIME);
+            printf("Errore relativo medio parallelo HLL: %f\n", mediumHllParallel.mean_rel_err);
+            printf("Errore assoluto medio parallelo HLL: %f\n", mediumHllParallel.mean_abs_err);
 
             // ================================
             // TEST 5: VERSIONE PARALLELA HLL MIGLIORATA
@@ -358,42 +306,39 @@ int main() {
                 double end = omp_get_wtime();
                 double time_parallel_hll_simd = end - start;
 
-                double error_hll_simd = checkDifferences(y_hll, y_serial, pre_mat.M, true);
-
-                if(j > 5){
+                DiffMetrics diffMetricsHllSimd = computeDifferenceMetrics(y_serial, y_hll, csr_mat.M, 1e-5, 1e-4, true);
+				accumulateErrors(&diffMetricsHllSimd, PARALLEL_HLL_SIMD_TIME);
+                if(j > ITERATION_SKIP){
 
                     update_medium_metric(PARALLEL_HLL_SIMD_TIME, time_parallel_hll_simd);
                     double flops_hll_simd = calculate_flops(csr_mat.nz, time_parallel_hll_simd);
-                    double speedup_hll_simd = avg_time_serial_hll / time_parallel_hll_simd;
+                    double speedup_hll_simd = perfMetricsHll.time / time_parallel_hll_simd;
                     double efficiency_hll_simd = speedup_hll_simd / current_threads;
 
                     printf("Tempo esecuzione parallelo HLL SIMD: %f secondi\n", time_parallel_hll_simd);
                     printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_hll_simd);
                     print_flops(flops_hll_simd);
-                    printf("Errore relativo: %f\n", error_hll_simd);
+                    printf("Errore relativo: %f\n", diffMetricsHllSimd.mean_rel_err);
                     printf("Valore dello speed-up: %f\n", speedup_hll_simd);
                     printf("Valore efficienza: %f\n", efficiency_hll_simd);
 
                 }
-                update_metric_error(PARALLEL_HLL_SIMD_TIME, error_hll_simd);
             }
 
-            double avg_time_parallel_hll_simd = get_metric_value(PARALLEL_HLL_SIMD_TIME);
-            double avg_speedup_hll_simd = avg_time_serial_hll / avg_time_parallel_hll_simd;
-            double avg_efficiency_hll_simd = avg_speedup_hll_simd / current_threads;
-            double avg_flops_hll_simd = calculate_flops(csr_mat.nz, avg_time_parallel_hll_simd);
-            double stddev_parallel_simd_hll = get_metric_stddev(PARALLEL_HLL_SIMD_TIME);
-            double min_value_hll_simd = get_metric_min(PARALLEL_HLL_SIMD_TIME);
-            double medium_error_hll_simd = get_metric_error(PARALLEL_HLL_SIMD_TIME);
-            printf("\nTempo medio parallelo HLL SIMD: %f secondi\n", avg_time_parallel_hll_simd);
-            printf("Speedup medio: %f\n", avg_speedup_hll_simd);
-            printf("Efficienza media: %f\n", avg_efficiency_hll_simd);
+            PerformanceMetrics perfMetricsHllSimd;
+            perfMetricsHllSimd.time = get_metric_value(PARALLEL_HLL_SIMD_TIME);
+            perfMetricsHllSimd.speedup = perfMetricsHll.time / perfMetricsHllSimd.time;
+            perfMetricsHllSimd.efficiency = perfMetricsHllSimd.speedup / current_threads;
+            perfMetricsHllSimd.flops = calculate_flops(csr_mat.nz, perfMetricsHllSimd.time);
+
+            printf("\nTempo medio parallelo HLL SIMD: %f secondi\n", perfMetricsHllSimd.time);
+            printf("Speedup medio: %f\n", perfMetricsHllSimd.speedup);
+            printf("Efficienza media: %f\n", perfMetricsHllSimd.efficiency);
             printf("FLOPS medi: ");
-            print_flops(avg_flops_hll_simd);
-            printf("Deviazione standard tempo: %f secondi (%.2f%%)\n",
-            stddev_parallel_simd_hll, 100.0 * stddev_parallel_simd_hll / avg_time_parallel_hll_simd);
-            printf("Errore medio: %f\n", medium_error_hll_simd);
-            printf("Valore minimo: %f\n", min_value_hll_simd);
+            print_flops(perfMetricsHllSimd.flops);
+			DiffMetrics mediumHllSimd = computeAverageErrors(PARALLEL_HLL_SIMD_TIME);
+            printf("Errore relativo medio parallelo HLL SIMD: %f\n", mediumHllSimd.mean_rel_err);
+            printf("Errore assoluto medio parallelo HLL SIMD: %f\n", mediumHllSimd.mean_abs_err);
 
             // ================================
             // TEST 6: VERSIONE PARALLELA CSR MIGLIORATA
@@ -412,122 +357,96 @@ int main() {
                 double end = omp_get_wtime();
                 double time_parallel_simd = end - start;
 
-                double error_simd = checkDifferences(y_parallel_csr, y_serial, csr_mat.M, false);
-                if (error_simd != 0) {
-                    printf("ERRORE: Risultato CSR SIMD parallelo non corrisponde al risultato CSR seriale\n");
-                    continue;
-                }
-                if(j > 5){
+                DiffMetrics diffMetricsParallelCsrSimd = computeDifferenceMetrics(y_serial, y_parallel_csr, csr_mat.M, 1e-5, 1e-4, true);
+				accumulateErrors(&diffMetricsParallelCsrSimd, PARALLEL_SIMD_CSR_TIME);
+                if(j > ITERATION_SKIP){
                     update_medium_metric(PARALLEL_SIMD_CSR_TIME, time_parallel_simd);
                     double flops_simd = calculate_flops(csr_mat.nz, time_parallel_simd);
-                    double speedup_simd = avg_time_serial / time_parallel_simd;
+                    double speedup_simd = perfMetricsCsr.time / time_parallel_simd;
                     double efficiency_simd = speedup_simd / current_threads;
 
                     printf("Tempo esecuzione parallelo CSR SIMD: %f secondi\n", time_parallel_simd);
                     printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_simd);
                     print_flops(flops_simd);
-                    printf("Errore relativo: %f\n", error_simd);
+                    printf("Errore relativo: %f\n", diffMetricsParallelCsrSimd.mean_rel_err);
+                    printf("Errore assoluto: %f\n", diffMetricsParallelCsrSimd.mean_abs_err);
                     printf("Valore dello speed-up: %f\n", speedup_simd);
                     printf("Valore efficienza: %f\n", efficiency_simd);
                 }
-                update_metric_error(PARALLEL_SIMD_CSR_TIME, error_simd);
             }
 
-            double avg_time_parallel_simd = get_metric_value(PARALLEL_SIMD_CSR_TIME);
-            double avg_speedup_simd = avg_time_serial / avg_time_parallel_simd;
-            double stddev_parallel_simd = get_metric_stddev(PARALLEL_SIMD_CSR_TIME);
-            double avg_efficiency_simd = avg_speedup_simd / current_threads;
-            double avg_flops_simd = calculate_flops(csr_mat.nz, avg_time_parallel_simd);
-            double min_value_simd = get_metric_min(PARALLEL_SIMD_CSR_TIME);
-            double medium_error_simd = get_metric_error(PARALLEL_SIMD_CSR_TIME);
-            printf("\nTempo medio parallelo CSR SIMD: %f secondi\n", avg_time_parallel_simd);
-            printf("Speedup medio: %f\n", avg_speedup_simd);
-            printf("Efficienza media: %f\n", avg_efficiency_simd);
+            PerformanceMetrics perfMetricsCsrSimd;
+            perfMetricsCsrSimd.time = get_metric_value(PARALLEL_SIMD_CSR_TIME);
+            perfMetricsCsrSimd.speedup = perfMetricsCsr.time / perfMetricsCsrSimd.time;
+            perfMetricsCsrSimd.efficiency = perfMetricsCsrSimd.speedup / current_threads;
+            perfMetricsCsrSimd.flops = calculate_flops(csr_mat.nz, perfMetricsCsrSimd.time);
+
+            printf("\nTempo medio parallelo CSR SIMD: %f secondi\n", perfMetricsCsrSimd.time);
+            printf("Speedup medio: %f\n", perfMetricsCsrSimd.speedup);
+            printf("Efficienza media: %f\n", perfMetricsCsrSimd.efficiency);
             printf("FLOPS medi: ");
-            print_flops(avg_flops_simd);
-            printf("Deviazione standard tempo: %f secondi (%.2f%%)\n",
-            stddev_parallel_simd, 100.0 * stddev_parallel_simd / avg_time_parallel_simd);
-            printf("Errore medio: %f\n", medium_error_simd);
-            printf("Valore minimo: %f\n", min_value_simd);
+            print_flops(perfMetricsCsrSimd.flops);
+			DiffMetrics mediumCsrSimdError = computeAverageErrors(PARALLEL_SIMD_CSR_TIME);
+            printf("Errore relativo medio parallelo CSR SIMD: %f\n", mediumCsrSimdError.mean_rel_err);
+            printf("Errore assoluto medio parallelo CSR SIMD: %f\n", mediumCsrSimdError.mean_abs_err);
 
             // Output risultati medi e salvataggio CSV
             printf("\n========== Risultati medi per matrice %s con %d thread ==========\n",
                    dir->d_name, current_threads);
 
             printf("--- Tempi di esecuzione ---\n");
-            printf("Tempo medio seriale CSR: %f secondi\n", avg_time_serial);
-            printf("Tempo medio seriale HLL: %f secondi\n", avg_time_serial_hll);
-            printf("Tempo medio parallelo CSR: %f secondi\n", avg_time_parallel_csr);
-            printf("Tempo medio parallelo CSR SIMD: %f secondi\n", avg_time_parallel_simd);
-            printf("Tempo medio parallelo HLL: %f secondi\n", avg_time_parallel_hll);
-            printf("Tempo medio parallelo HLL SIMD: %f secondi\n", avg_time_parallel_hll_simd);
+            printf("Tempo medio seriale CSR: %f secondi\n", perfMetricsCsr.time);
+            printf("Tempo medio seriale HLL: %f secondi\n", perfMetricsHll.time);
+            printf("Tempo medio parallelo CSR: %f secondi\n", perfMetricsCsrParallel.time);
+            printf("Tempo medio parallelo CSR SIMD: %f secondi\n", perfMetricsCsrSimd.time);
+            printf("Tempo medio parallelo HLL: %f secondi\n", perfMetricsHllParallel.time);
+            printf("Tempo medio parallelo HLL SIMD: %f secondi\n", perfMetricsHllSimd.time);
 
             printf("\n--- Speedup ---\n");
-            printf("Speedup medio (parallelo CSR): %f\n", avg_speedup_parallel_csr);
-            printf("Speedup medio (parallelo CSR SIMD): %f\n", avg_speedup_simd);
-            printf("Speedup medio (parallelo HLL): %f\n", avg_speedup_hll);
-            printf("Speedup medio (parallelo HLL SIMD): %f\n", avg_speedup_hll_simd);
+            printf("Speedup medio (parallelo CSR): %f\n", perfMetricsCsrParallel.speedup);
+            printf("Speedup medio (parallelo CSR SIMD): %f\n", perfMetricsCsrSimd.speedup);
+            printf("Speedup medio (parallelo HLL): %f\n", perfMetricsHllParallel.speedup);
+            printf("Speedup medio (parallelo HLL SIMD): %f\n", perfMetricsHllSimd.speedup);
 
             printf("\n--- Efficienza ---\n");
-            printf("Efficienza media (parallelo CSR): %f\n", avg_efficiency_parallel_csr);
-            printf("Efficienza media (parallelo CSR SIMD): %f\n", avg_efficiency_simd);
-            printf("Efficienza media (parallelo HLL): %f\n", avg_efficiency_hll);
-            printf("Efficienza media (parallelo HLL SIMD): %f\n", avg_efficiency_hll_simd);
+            printf("Efficienza media (parallelo CSR): %f\n", perfMetricsCsrParallel.efficiency);
+            printf("Efficienza media (parallelo CSR SIMD): %f\n", perfMetricsCsrSimd.efficiency);
+            printf("Efficienza media (parallelo HLL): %f\n", perfMetricsHllParallel.efficiency);
+            printf("Efficienza media (parallelo HLL SIMD): %f\n", perfMetricsHllSimd.efficiency);
 
             printf("\n--- Prestazioni (FLOPS) ---\n");
             printf("Prestazioni seriali CSR: ");
-            print_flops(avg_flops_serial);
+            print_flops(perfMetricsCsr.flops);
             printf("Prestazioni seriali HLL: ");
-            print_flops(avg_flops_hll_serial);
+            print_flops(perfMetricsHll.flops);
             printf("Prestazioni parallele CSR: ");
-            print_flops(avg_flops_parallel);
+            print_flops(perfMetricsCsrParallel.flops);
             printf("Prestazioni parallele CSR SIMD: ");
-            print_flops(avg_flops_simd);
+            print_flops(perfMetricsCsrSimd.flops);
             printf("Prestazioni parallele HLL: ");
-            print_flops(avg_flops_hll);
+            print_flops(perfMetricsHllParallel.flops);
             printf("Prestazioni parallele HLL SIMD: ");
-            print_flops(avg_flops_hll_simd);
-
-            printf("\n--- Deviazione Standard ---\n");
-            printf("Deviazione standard csr parallelo: %.2f%%\n", 100.0 * stddev_parallel_csr / avg_time_parallel_csr);
-            printf("Deviazione standard hll parallleo: %.2f%%\n", 100.0 * stddev_parallel_hll / avg_time_parallel_hll);
-            printf("Deviazione standard csr simd: %.2f%%\n", 100.0 * stddev_parallel_simd / avg_time_parallel_simd);
-            printf("Deviazione standard hll simd: %.2f%%\n", 100.0 * stddev_parallel_simd_hll / avg_time_parallel_hll_simd);
+            print_flops(perfMetricsHllSimd.flops);
 
             printf("\n--- Errore medio ---\n");
-            printf("Errore medio csr parallelo: %f\n", get_metric_error(PARALLEL_CSR_TIME));
-            printf("Errore medio hll parallelo: %f\n", get_metric_error(PARALLEL_HLL_TIME));
-            printf("Errore medio csr simd: %f\n", get_metric_error(PARALLEL_SIMD_CSR_TIME));
-            printf("Errore medio hll simd: %f\n", get_metric_error(PARALLEL_HLL_SIMD_TIME));
-
-            printf("Valore minimo di tutti i i tempi di esecuzione:\n");
-            printf("CSR: %f\n", min_value);
-            printf("HLL: %f\n", min_value_hll);
-            printf("CSR SIMD: %f\n", min_value_simd);
-            printf("HLL SIMD: %f\n", min_value_hll_simd);
-            printf("Valore FLOPS con tempo minimo:\n");
-            printf("CSR: ");
-            print_flops(calculate_flops(csr_mat.nz, min_value));
-            printf("HLL: ");
-            print_flops(calculate_flops(csr_mat.nz, min_value_hll));
-            printf("CSR SIMD: ");
-            print_flops(calculate_flops(csr_mat.nz, min_value_simd));
-            printf("HLL SIMD: ");
-            print_flops(calculate_flops(csr_mat.nz, min_value_hll_simd));
-
+            printf("Errore medio relativo: %f e assoluto %f csr parallelo\n", mediumCsrParallel.mean_rel_err, mediumCsrParallel.mean_abs_err);
+            printf("Errore medio relativo: %f e assoluto %f hll parallelo\n", mediumHllParallel.mean_rel_err, mediumHllParallel.mean_abs_err);
+            printf("Errore medio relativo: %f e assoluto %f csr simd parallelo\n", mediumCsrSimdError.mean_rel_err, mediumCsrSimdError.mean_abs_err);
+            printf("Errore medio relativo: %f e assoluto %f hll simd parallelo\n", mediumHllSimd.mean_rel_err, mediumHllSimd.mean_abs_err);
 
 
             // Salva risultati su CSV
-            write_results_to_csv(dir->d_name, csr_mat.M, csr_mat.N, csr_mat.nz,
-                               current_threads, avg_time_serial, avg_time_serial_hll, avg_time_parallel_csr,
-                               avg_time_parallel_simd, avg_time_parallel_hll, avg_time_parallel_hll_simd,
-                               stddev_parallel_csr, stddev_parallel_hll, stddev_parallel_simd, stddev_parallel_simd_hll,
-                               min_value, min_value_hll, min_value_simd, min_value_hll_simd,
-                               medium_error, medium_error_hll, medium_error_simd, medium_error_hll_simd,
-                               avg_speedup_parallel_csr, avg_speedup_simd, avg_speedup_hll, avg_speedup_hll_simd,
-                               avg_efficiency_parallel_csr, avg_efficiency_simd, avg_efficiency_hll, avg_efficiency_hll_simd,
-                               avg_flops_serial, avg_flops_hll_serial, avg_flops_parallel, avg_flops_simd, avg_flops_hll, avg_flops_hll_simd,
-                               output_csv);
+            write_results_to_csv(
+    		dir->d_name, csr_mat.M, csr_mat.N, csr_mat.nz,
+    		current_threads,
+    		perfMetricsCsr.time, perfMetricsHll.time, perfMetricsCsrParallel.time,
+    		perfMetricsCsrSimd.time, perfMetricsHllParallel.time, perfMetricsHllSimd.time,
+    		mediumCsrParallel, mediumHllParallel, mediumCsrSimdError, mediumHllSimd,
+    		perfMetricsCsrParallel.speedup, perfMetricsCsrSimd.speedup, perfMetricsHllParallel.speedup, perfMetricsHllSimd.speedup,
+    		perfMetricsCsrParallel.efficiency, perfMetricsCsrSimd.efficiency, perfMetricsHllParallel.efficiency, perfMetricsHllSimd.efficiency,
+    		perfMetricsCsr.flops, perfMetricsHll.flops, perfMetricsCsrParallel.flops, perfMetricsCsrSimd.flops, perfMetricsHllParallel.flops, perfMetricsHllSimd.flops,
+    		output_csv);
+
 
             // Liberiamo le risorse per questa configurazione di thread
             FREE_CHECK(thread_row_start);

@@ -6,6 +6,7 @@
 #include <string.h>
 #include "mmio.h"
 #include "utility.cuh"
+
 void init_pre_matrix(PreMatrix *mat) {
     mat->M = 0;
     mat->N = 0;

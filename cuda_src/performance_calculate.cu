@@ -42,3 +42,52 @@ void print_flops(double flops) {
     printf("%.3f %s\n", flops, units[unit_index]);
 }
 
+
+DifferenceMetrics computeDifferenceMetrics(
+    const double* ref,
+    const double* res,
+    int n,
+    double abs_tol,
+    double rel_tol,
+    bool print_summary
+)
+{
+    DifferenceMetrics metrics = {0.0, 0.0};
+
+    if (n <= 0) {
+        if (print_summary) {
+            printf("--- Comparison Summary ---\n");
+            printf("Vector size        : 0\n");
+            printf("Result             : PASS (empty vectors)\n");
+            printf("------------------------\n");
+        }
+        return metrics;
+    }
+
+    double sum_abs_err = 0.0;
+    double sum_rel_err = 0.0;
+
+    for (int i = 0; i < n; ++i) {
+        double abs_diff = std::fabs(ref[i] - res[i]);
+        double ref_abs = std::fabs(ref[i]);
+
+        sum_abs_err += abs_diff;
+
+        if (ref_abs > abs_tol) {
+            sum_rel_err += abs_diff / ref_abs;
+        }
+    }
+
+    metrics.mean_abs_err = sum_abs_err / n;
+    metrics.mean_rel_err = sum_rel_err / n;
+
+    if (print_summary) {
+        printf("--- Comparison Summary ---\n");
+        printf("Vector size         : %d\n", n);
+        printf("Mean Absolute Error : %.10e\n", metrics.mean_abs_err);
+        printf("Mean Relative Error : %.10e\n", metrics.mean_rel_err);
+        printf("------------------------\n");
+    }
+
+    return metrics;
+}
