@@ -13,8 +13,6 @@ MetricStats metrics[NUM_METRICS];
 void initialize_metrics() {
     for (int i = 0; i < NUM_METRICS; i++) {
         metrics[i].sum = 0.0;
-        metrics[i].min = INFINITY;
-        metrics[i].max = -INFINITY;
         metrics[i].count = 0;
         metrics[i].capacity = INITIAL_CAPACITY;
         metrics[i].relative_error = 0.0;
@@ -38,38 +36,6 @@ void cleanup_metrics() {
 double get_metric_value(const MediumPerformanceMetric type) {
     if (metrics[type].count == 0) return 0.0;
     return metrics[type].sum / metrics[type].count;
-}
-
-// Funzione per ottenere il valore minimo
-double get_metric_min(const MediumPerformanceMetric type) {
-    if (metrics[type].count == 0) return 0.0;
-    return metrics[type].min;
-}
-
-// Funzione per ottenere il valore massimo
-double get_metric_max(const MediumPerformanceMetric type) {
-    if (metrics[type].count == 0) return 0.0;
-    return metrics[type].max;
-}
-
-// Funzione per calcolare la varianza
-double get_metric_variance(const MediumPerformanceMetric type) {
-    if (metrics[type].count <= 1) return 0.0;
-
-    double mean = metrics[type].sum / metrics[type].count;
-    double sum_sq_diff = 0.0;
-
-    for (int i = 0; i < metrics[type].count; i++) {
-        double diff = metrics[type].values[i] - mean;
-        sum_sq_diff += diff * diff;
-    }
-
-    return sum_sq_diff / metrics[type].count;
-}
-
-// Funzione per calcolare la deviazione standard
-double get_metric_stddev(const MediumPerformanceMetric type) {
-    return sqrt(get_metric_variance(type));
 }
 
 // Funzione per il calcolo dell'errore relativo
@@ -104,15 +70,6 @@ DiffMetrics computeAverageErrors(const MediumPerformanceMetric type) {
 void update_medium_metric(const MediumPerformanceMetric type, const double value) {
     metrics[type].sum += value;
 
-    if (value < metrics[type].min) {
-        printf("Type: %d, Value: %.10f\n", type, value);
-        metrics[type].min = value;
-    }
-
-    if (value > metrics[type].max) {
-        metrics[type].max = value;
-    }
-
     if (metrics[type].count >= metrics[type].capacity) {
         metrics[type].capacity *= 2;
         metrics[type].values = (double*)realloc(metrics[type].values,
@@ -131,8 +88,6 @@ void update_medium_metric(const MediumPerformanceMetric type, const double value
 void reset_medium_time_metrics() {
     for (int i = 0; i < NUM_METRICS; i++) {
         metrics[i].sum = 0.0;
-        metrics[i].min = INFINITY;
-        metrics[i].max = -INFINITY;
         metrics[i].count = 0;
         metrics[i].relative_error = 0.0;
         metrics[i].absolute_error = 0.0;

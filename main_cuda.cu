@@ -12,7 +12,7 @@
 #include "matrix_parser.cuh"
 #include "utility.cuh"
 #include "hll_matrix.cuh"
-#define NUM_ITERATION 100
+#define NUM_ITERATION 95 + ITERATION_SKIP
 
 
 int main() {
@@ -89,8 +89,8 @@ int main() {
         // Esecuzione seriale per confronto
     	printf("\n--- TEST SERIALE CSR ---\n");
     	reset_medium_time_metrics();
-        for(int i = 0; i < NUM_ITERATION; i++){
-            printf("Iterazione numero: %d\n", i+1);
+        for(int i = 1; i < NUM_ITERATION; i++){
+            printf("Iterazione numero: %d\n", i);
             memset(y_serial, 0, csr_mat.M * sizeof(double));
 
             cudaEventRecord(start);
@@ -104,7 +104,7 @@ int main() {
     		// Calcola il tempo trascorso
     		float milliseconds = 0;
     		cudaEventElapsedTime(&milliseconds, start, stop);
-
+			if(i > ITERATION_SKIP){
             //aggiorna la metrica
         	update_medium_metric(SERIAL_TIME, milliseconds / 1000.0f);
 
@@ -112,10 +112,11 @@ int main() {
 			printf("Tempo impiegato per l'esecuzione seriale CSR: %f secondi\n", milliseconds/1000.0f);
 			printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_serial);
             print_flops(flops_serial);
+            }
 		}
 
         PerformanceMetrics perf_metrics_serial_csr;
-        perf_metrics_serial_csr.time = get_metric_value(SERIAL_TIME) / NUM_ITERATION;
+        perf_metrics_serial_csr.time = get_metric_value(SERIAL_TIME);
         perf_metrics_serial_csr.flops = calculate_flops(csr_mat.nz, perf_metrics_serial_csr.time);
     	printf("Tempo medio impiegato per l'esecuzione seriale CSR: %f secondi\n", perf_metrics_serial_csr.time);
     	printf("Valore medio dei FLOPS: ");
@@ -150,7 +151,9 @@ int main() {
         // TEST 2: VERSIONE THREAD PER RIGA (CSR)
         // ======================================
     	printf("\n--- TEST THREAD PER RIGA CSR ---\n");
-    	for(int i = 0; i < NUM_ITERATION; i++) {
+        reset_medium_time_metrics();
+        clear_gpu_cache(64);
+    	for(int i = 1; i < NUM_ITERATION; i++) {
             printf("Iterazione numero: %d\n", i);
             CUDA_CHECK(cudaMemset(d_y, 0, csr_mat.M * sizeof(double)));
             // Registra l'evento di inizio
@@ -179,21 +182,29 @@ int main() {
     		// Controlla la correttezza del risultato ad ogni iterazione
     		printf("Verifica risultato iterazione %d:\n", i);
     		DiffMetrics diffMetrics = computeDifferenceMetrics(y_serial, y_parallel_csr, csr_mat.M);
+			accumulateErrors(&diffMetrics, ROW_CSR_TIME);
 
-            update_medium_metric(ROW_CSR_TIME, milliseconds / 1000.0f);
+            if(i > ITERATION_SKIP){
+            	update_medium_metric(ROW_CSR_TIME, milliseconds / 1000.0f);
 
-            printf("Tempo impiegato per l'esecuzione del Kernel-Naive: %f secondi\n", milliseconds/1000.0f);
-            double flops_parallel = calculate_flops(csr_mat.nz, milliseconds/1000.0f);
-            printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_parallel);
-            print_flops(flops_parallel);
+            	printf("Tempo impiegato per l'esecuzione del Kernel-Naive: %f secondi\n", milliseconds/1000.0f);
+            	double flops_parallel = calculate_flops(csr_mat.nz, milliseconds/1000.0f);
+            	printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_parallel);
+            	print_flops(flops_parallel);
+                printf("Errore relativo: %f\n", diffMetrics.mean_rel_err);
+                printf("Errore assoluto: %f\n", diffMetrics.mean_abs_err);
+            }
 	    }
         PerformanceMetrics perf_metrics_naive_csr;
     	// Calcola e stampa il tempo medio in secondi
-    	perf_metrics_naive_csr.time = get_metric_value(ROW_CSR_TIME) / NUM_ITERATION;
+    	perf_metrics_naive_csr.time = get_metric_value(ROW_CSR_TIME);
         perf_metrics_naive_csr.flops = calculate_flops(csr_mat.nz, perf_metrics_naive_csr.time);
     	printf("Tempo medio impiegato per l'esecuzione del Kernel-Naive CSR: %f secondi\n", perf_metrics_naive_csr.time);
 		printf("FLOPS medi: ");
         print_flops(perf_metrics_naive_csr.flops);
+		DiffMetrics mediumCsrParallel = computeAverageErrors(ROW_CSR_TIME);
+        printf("Errore relativo medio parallelo CSR: %f\n", mediumCsrParallel.mean_rel_err);
+        printf("Errore assoluto medio parallelo CSR: %f\n", mediumCsrParallel.mean_abs_err);
 
         cudaOccupancyMaxPotentialBlockSize(&minGrid, &blockSize,
                                   spmv_csr_warp_kernel, 0, 0);
@@ -210,8 +221,9 @@ int main() {
         // TEST 3: VERSIONE WARP PER RIGA (CSR)
         // ======================================
     	printf("\n--- TEST WARP PER RIGA CSR ---\n");
+        reset_medium_time_metrics();
     	clear_gpu_cache(64);
-        for(int i = 0; i < NUM_ITERATION; i++) {
+        for(int i = 1; i < NUM_ITERATION; i++) {
             printf("Iterazione numero: %d\n", i);
             CUDA_CHECK(cudaMemset(d_y, 0, csr_mat.M * sizeof(double)));
             // Registra l'evento di inizio
@@ -240,23 +252,27 @@ int main() {
         	// Controlla la correttezza del risultato ad ogni iterazione
         	printf("Verifica risultato iterazione %d:\n", i);
         	DiffMetrics diffMetrics = computeDifferenceMetrics(y_serial, y_parallel_csr, csr_mat.M);
+			accumulateErrors(&diffMetrics, WARP_CSR_TIME);
 
-        	update_medium_metric(WARP_CSR_TIME, milliseconds / 1000.0f);
-
-            printf("Tempo impiegato per l'esecuzione del Kernel-Warp: %f secondi\n", milliseconds/1000.0f);
-            double flops_parallel = calculate_flops(csr_mat.nz, milliseconds/1000.0f);
-            printf("Tempo esecuzione parallelo Warp CSR: %f secondi\n", milliseconds/1000.0f);
-            printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_parallel);
-            print_flops(flops_parallel);
-
+            if(i > ITERATION_SKIP){
+            	update_medium_metric(WARP_CSR_TIME, milliseconds / 1000.0f);
+            	printf("Tempo impiegato per l'esecuzione del Kernel-Warp: %f secondi\n", milliseconds/1000.0f);
+            	double flops_parallel = calculate_flops(csr_mat.nz, milliseconds/1000.0f);
+            	printf("Tempo esecuzione parallelo Warp CSR: %f secondi\n", milliseconds/1000.0f);
+            	printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_parallel);
+            	print_flops(flops_parallel);
+			}
         }
         PerformanceMetrics perf_metrics_warp_csr;
         // Calcola e stampa il tempo medio in secondi
-        perf_metrics_warp_csr.time = get_metric_value(WARP_CSR_TIME) / NUM_ITERATION;
+        perf_metrics_warp_csr.time = get_metric_value(WARP_CSR_TIME);
         printf("Tempo medio impiegato per l'esecuzione del Kernel-Warp CSR: %f secondi\n", perf_metrics_warp_csr.time);
 		perf_metrics_warp_csr.flops = calculate_flops(csr_mat.nz, perf_metrics_warp_csr.time);
         printf("Flops medi: ");
         print_flops(perf_metrics_warp_csr.flops);
+        DiffMetrics mediumCsrWarp = computeAverageErrors(WARP_CSR_TIME);
+        printf("Errore relativo medio parallelo CSR: %f\n", mediumCsrWarp.mean_rel_err);
+        printf("Errore assoluto medio parallelo CSR: %f\n", mediumCsrWarp.mean_abs_err);
 
         // ==================================================
         // TEST 4: VERSIONE WARP PER RIGA E MEMORIA CONDIVISA (CSR)
@@ -279,8 +295,9 @@ int main() {
 		// Un warp per riga, quindi M warps totali
 		blocksPerGrid = (csr_mat.M + warpsPerBlock - 1) / warpsPerBlock;
         printf("\n--- TEST WARP PER RIGA CON MEMORIA CONDIVISA E CSR ---\n");
-		clear_gpu_cache(64);
-        for(int i = 0; i < NUM_ITERATION; i++) {
+		reset_medium_time_metrics();
+        clear_gpu_cache(64);
+        for(int i = 1; i < NUM_ITERATION; i++) {
             printf("Iterazione numero: %d\n", i);
             CUDA_CHECK(cudaMemset(d_y, 0, csr_mat.M * sizeof(double)));
             // Registra l'evento di inizio
@@ -309,23 +326,31 @@ int main() {
         	// Controlla la correttezza del risultato ad ogni iterazione
         	printf("Verifica risultato iterazione %d:\n", i);
         	DiffMetrics diffMetrics = computeDifferenceMetrics(y_serial, y_parallel_csr, csr_mat.M);
+			accumulateErrors(&diffMetrics, WARP_SHARED_MEMORY_CSR_TIME);
 
-        	update_medium_metric(WARP_SHARED_MEMORY_CSR_TIME, milliseconds / 1000.0f);
-
-            printf("Tempo impiegato per l'esecuzione del Kernel-Warp com shared memory CSR: %f secondi\n", milliseconds/1000.0f);
-            double flops_parallel = calculate_flops(csr_mat.nz, milliseconds/1000.0f);
-            printf("Tempo esecuzione parallelo Warp shared memory CSR: %f secondi\n", milliseconds/1000.0f);
-            printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_parallel);
-            print_flops(flops_parallel);
-
+            if (i > ITERATION_SKIP){
+        		update_medium_metric(WARP_SHARED_MEMORY_CSR_TIME, milliseconds / 1000.0f);
+            	printf("Tempo impiegato per l'esecuzione del Kernel-Warp com shared memory CSR: %f secondi\n", milliseconds/1000.0f);
+            	double flops_parallel = calculate_flops(csr_mat.nz, milliseconds/1000.0f);
+            	printf("Tempo esecuzione parallelo Warp shared memory CSR: %f secondi\n", milliseconds/1000.0f);
+            	printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_parallel);
+            	print_flops(flops_parallel);
+                printf("Errore relativo: %f\n", diffMetrics.mean_rel_err);
+				printf("Errore assoluto: %f\n", diffMetrics.mean_abs_err);
+        	}
         }
+
         PerformanceMetrics perf_metrics_warp_shared_csr;
         // Calcola e stampa il tempo medio in secondi
-        perf_metrics_warp_shared_csr.time = get_metric_value(WARP_SHARED_MEMORY_CSR_TIME) / NUM_ITERATION;
+        perf_metrics_warp_shared_csr.time = get_metric_value(WARP_SHARED_MEMORY_CSR_TIME);
         printf("Tempo medio impiegato per l'esecuzione del Kernel-Warp shared memory CSR: %f secondi\n", perf_metrics_warp_shared_csr.time);
 		perf_metrics_warp_shared_csr.flops = calculate_flops(csr_mat.nz, perf_metrics_warp_shared_csr.time);
         printf("Flops medi: ");
         print_flops(perf_metrics_warp_shared_csr.flops);
+        DiffMetrics mediumCsrWarpShared = computeAverageErrors(WARP_SHARED_MEMORY_CSR_TIME);
+        printf("Errore relativo medio Kernel-Warp shared memory CSR: %f\n", mediumCsrWarpShared.mean_rel_err);
+        printf("Errore assoluto medio Kernel-Warp shared memory CSR: %f\n", mediumCsrWarpShared.mean_abs_err);
+
 
     	// Vettori x e y sulla device
     	double *d_x_hll;
@@ -376,6 +401,7 @@ int main() {
                                              sharedMemCalculator_hll, 0);
 
     	PerformanceMetrics perf_metrics_warp_shared_hll;
+        DiffMetrics mediumHllWarpShared;
 		if(blockSize != 0){
 			// Assicurati che blockSize sia multiplo di 32
 			blockSize = (blockSize / 32) * 32;
@@ -401,9 +427,9 @@ int main() {
 	        // TEST 1: VERSIONE WARP PER RIGA E MEMORIA CONDIVISA (HLL)
 	        // ==================================================
     		printf("\n--- TEST WARP PER RIGA CON MEMORIA CONDIVISA E HLL ---\n");
-
-    		clear_gpu_cache(64);
-	        for(int i = 0; i < NUM_ITERATION; i++) {
+			reset_medium_time_metrics();
+        	clear_gpu_cache(64);
+	        for(int i = 1; i < NUM_ITERATION; i++) {
 	            printf("Iterazione numero: %d\n", i);
 	            CUDA_CHECK(cudaMemset(d_y_hll, 0, csr_mat.M * sizeof(double)));
 	            // Registra l'evento di inizio
@@ -423,66 +449,78 @@ int main() {
 	            // Calcola il tempo trascorso
 	            float milliseconds = 0;
 	            CUDA_CHECK(cudaEventElapsedTime(&milliseconds, start, stop));
-        		update_medium_metric(WARP_SHARED_MEMORY_HLL_TIME, milliseconds / 1000.0f);
-
-	            printf("Tempo impiegato per l'esecuzione del Kernel-Warp con shared memory: %f secondi\n", milliseconds/1000.0f);
-	            double flops_parallel = calculate_flops(csr_mat.nz, milliseconds/1000.0f);
-	            printf("Tempo esecuzione parallelo Warp con shared memory CSR: %f secondi\n", milliseconds/1000.0f);
-	            printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_parallel);
-	            print_flops(flops_parallel);
-
-	            // Copia il risultato ad ogni iterazione
+                // Copia il risultato ad ogni iterazione
 	            CUDA_CHECK(cudaMemcpy(y_hll, d_y, csr_mat.M * sizeof(double), cudaMemcpyDeviceToHost));
-
 	            // Controlla la correttezza del risultato ad ogni iterazione
 	            printf("Verifica risultato iterazione %d:\n", i);
-	        	DiffMetrics diffMetrics = computeDifferenceMetrics(y_serial, y_parallel_csr, csr_mat.M);
-
+	        	DiffMetrics diffMetrics = computeDifferenceMetrics(y_serial, y_hll, csr_mat.M);
+				accumulateErrors(&diffMetrics, WARP_SHARED_MEMORY_HLL_TIME);
+        		if(i > ITERATION_SKIP){
+                	update_medium_metric(WARP_SHARED_MEMORY_HLL_TIME, milliseconds / 1000.0f);
+	            	printf("Tempo impiegato per l'esecuzione del Kernel-Warp con shared memory: %f secondi\n", milliseconds/1000.0f);
+	            	double flops_parallel = calculate_flops(csr_mat.nz, milliseconds/1000.0f);
+	            	printf("Tempo esecuzione parallelo Warp con shared memory CSR: %f secondi\n", milliseconds/1000.0f);
+	            	printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_parallel);
+	            	print_flops(flops_parallel);
+                    printf("Errore relativo: %f\n", diffMetrics.mean_rel_err);
+                    printf("Errore assoluto: %f\n", diffMetrics.mean_abs_err);
+				}
 	        }
 
 	        // Calcola e stampa il tempo medio in secondi
-	        perf_metrics_warp_shared_hll.time = get_metric_value(WARP_SHARED_MEMORY_HLL_TIME) / NUM_ITERATION;
+	        perf_metrics_warp_shared_hll.time = get_metric_value(WARP_SHARED_MEMORY_HLL_TIME);
 	        printf("Tempo medio impiegato per l'esecuzione del Kernel-Warp con Shared Memory HLL: %f secondi\n", perf_metrics_warp_shared_hll.time);
 			perf_metrics_warp_shared_hll.flops = calculate_flops(csr_mat.nz, perf_metrics_warp_shared_hll.time);
 	        printf("Flops medi: ");
 	        print_flops(perf_metrics_warp_shared_hll.flops);
+            mediumHllWarpShared = computeAverageErrors(WARP_SHARED_MEMORY_HLL_TIME);
+            printf("Errore relativo medio parallelo HLL Warp con Shared Memory: %f\n", mediumHllWarpShared.mean_rel_err);
+            printf("Errore assoluto medio parallelo HLL Warp con Shared Memory: %f\n", mediumHllWarpShared.mean_abs_err);
+
 		}
 
     	// ================================
     	// TEST 1: VERSIONE SERIALE (HLL)
     	// ================================
     	printf("\n--- TEST SERIALE HLL ---\n");
-    	clear_gpu_cache(64);
-    	for(int i = 0; i < NUM_ITERATION; i++){
-    		printf("Iterazione numero: %d\n", i+1);
+    	reset_medium_time_metrics();
+        clear_gpu_cache(64);
+    	for(int i = 1; i < NUM_ITERATION; i++){
+    		printf("Iterazione numero: %d\n", i);
     		memset(y_hll, 0, csr_mat.M * sizeof(double));
 
     		CUDA_CHECK(cudaEventRecord(start));
     		spmv_hll_serial(hll_mat.num_blocks, hll_mat.blocks, x, y_hll);
     		CUDA_CHECK(cudaEventRecord(stop));
-
     		// Aspetta la fine dell'esecuzione
     		CUDA_CHECK(cudaEventSynchronize(stop));
-
+            float milliseconds_hll = 0;
+    		CUDA_CHECK(cudaEventElapsedTime(&milliseconds_hll, start, stop));
     		printf("Verifica risultato iterazione %d:\n", i);
     		DiffMetrics diffMetrics = computeDifferenceMetrics(y_serial, y_hll, csr_mat.M);
+			accumulateErrors(&diffMetrics, SERIAL_HLL_TIME);
+            if(i > ITERATION_SKIP){
+              	// Calcola il tempo trascorso
+    			update_medium_metric(SERIAL_HLL_TIME, milliseconds_hll / 1000.0f);
 
-    		// Calcola il tempo trascorso
-    		float milliseconds_hll = 0;
-    		CUDA_CHECK(cudaEventElapsedTime(&milliseconds_hll, start, stop));
-    		update_medium_metric(SERIAL_HLL_TIME, milliseconds_hll / 1000.0f);
-
-    		double flops_serial_hll = calculate_flops(csr_mat.nz, milliseconds_hll/1000.0f);
-    		printf("Tempo impiegato per l'esecuzione seriale HLL: %f secondi\n", milliseconds_hll/1000.0f);
-    		printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_serial_hll);
-    		print_flops(flops_serial_hll);
+    			double flops_serial_hll = calculate_flops(csr_mat.nz, milliseconds_hll/1000.0f);
+    			printf("Tempo impiegato per l'esecuzione seriale HLL: %f secondi\n", milliseconds_hll/1000.0f);
+    			printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_serial_hll);
+    			print_flops(flops_serial_hll);
+                printf("Errore relativo: %f\n", diffMetrics.mean_rel_err);
+                printf("Errore assoluto: %f\n", diffMetrics.mean_abs_err);
+    		}
     	}
 		PerformanceMetrics perf_metrics_serial_hll;
-    	perf_metrics_serial_hll.time = get_metric_value(SERIAL_HLL_TIME) / NUM_ITERATION;
+    	perf_metrics_serial_hll.time = get_metric_value(SERIAL_HLL_TIME);
     	printf("Tempo medio impiegato per l'esecuzione seriale HLL: %f secondi\n", perf_metrics_serial_hll.time);
-		perf_metrics_serial_hll.flops = calculate_flops(csr_mat.nz, perf_metrics_serial_hll.flops);
+		perf_metrics_serial_hll.flops = calculate_flops(csr_mat.nz, perf_metrics_serial_hll.time);
         printf("Flops medi: ");
         print_flops(perf_metrics_serial_hll.flops);
+        DiffMetrics mediumHllSerial = computeAverageErrors(SERIAL_HLL_TIME);
+        printf("Errore relativo medio HLL seriale: %f\n", mediumHllSerial.mean_rel_err);
+        printf("Errore assoluto medio Hll seriale: %f\n", mediumHllSerial.mean_abs_err);
+
 
 		cudaOccupancyMaxPotentialBlockSize(&minGrid, &blockSize,
                                   spmv_hll_naive_kernel, 0, 0);
@@ -495,9 +533,10 @@ int main() {
 		// TEST 2: VERSIONE HLL NAIVE
 		// ======================================
     	printf("\n--- TEST RIGA PER THREAD HLL ---\n");
-    	clear_gpu_cache(64);
-		for(int i = 0; i < NUM_ITERATION; i++) {
-		    printf("Iterazione numero: %d\n", i+1);
+    	reset_medium_time_metrics();
+        clear_gpu_cache(64);
+		for(int i = 1; i < NUM_ITERATION; i++) {
+		    printf("Iterazione numero: %d\n", i);
 
 		    // Azzera il vettore risultato
 		    CUDA_CHECK(cudaMemset(d_y_hll, 0, csr_mat.M * sizeof(double)));
@@ -519,33 +558,37 @@ int main() {
             CUDA_CHECK(cudaEventSynchronize(stop));
 
 			// Controlla la correttezza del risultato ad ogni iterazione
-			printf("Verifica risultato iterazione %d:\n", i+1);
-			DiffMetrics diffMetrics = computeDifferenceMetrics(y_serial, y_hll, csr_mat.M);
-
-		    // Calcola il tempo trascorso
-		    float milliseconds = 0;
+			printf("Verifica risultato iterazione %d:\n", i);
+            float milliseconds = 0;
 		    cudaEventElapsedTime(&milliseconds, start, stop);
-			update_medium_metric(ROW_HLL_TIME, milliseconds / 1000.0f);
+            // Copia il risultato ad ogni iterazione
+			CUDA_CHECK(cudaMemcpy(y_hll, d_y_hll, csr_mat.M * sizeof(double), cudaMemcpyDeviceToHost));
 
+			DiffMetrics diffMetrics = computeDifferenceMetrics(y_serial, y_hll, csr_mat.M);
+			accumulateErrors(&diffMetrics, ROW_HLL_TIME);
+		    // Calcola il tempo trascorso
+			if(i > ITERATION_SKIP){
+            update_medium_metric(ROW_HLL_TIME, milliseconds / 1000.0f);
 		    printf("Tempo impiegato per l'esecuzione del Kernel-HLL-Naive: %f secondi\n", milliseconds/1000.0f);
-
 		    // Usa il conteggio nz della matrice CSR per i confronti
 		    double flops_parallel = calculate_flops(csr_mat.nz, milliseconds/1000.0f);
-
 		    printf("Tempo esecuzione parallelo HLL: %f secondi\n", milliseconds/1000.0f);
 		    printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_parallel);
 		    print_flops(flops_parallel);
-
-		    // Copia il risultato ad ogni iterazione
-			CUDA_CHECK(cudaMemcpy(y_hll, d_y_hll, csr_mat.M * sizeof(double), cudaMemcpyDeviceToHost));
+			printf("Errore relativo: %f\n", diffMetrics.mean_rel_err);
+            printf("Errore assoluto: %f\n", diffMetrics.mean_abs_err);
+			}
 		}
 		PerformanceMetrics perf_metrics_hll_naive;
 		// Calcola e stampa il tempo medio in secondi
-		perf_metrics_hll_naive.time = get_metric_value(ROW_HLL_TIME) / NUM_ITERATION;
+		perf_metrics_hll_naive.time = get_metric_value(ROW_HLL_TIME);
 		printf("Tempo medio impiegato per l'esecuzione del Kernel-HLL-Naive: %f secondi\n", perf_metrics_hll_naive.time);
 		perf_metrics_hll_naive.flops = calculate_flops(csr_mat.nz, perf_metrics_hll_naive.time);
         printf("Flops medi: ");
         print_flops(perf_metrics_hll_naive.flops);
+		DiffMetrics mediumHllNaive = computeAverageErrors(ROW_HLL_TIME);
+        printf("Errore relativo medio parallelo HLL row: %f\n", mediumHllNaive.mean_rel_err);
+        printf("Errore assoluto medio parallelo HLL row: %f\n", mediumHllNaive.mean_abs_err);
 
     cudaOccupancyMaxPotentialBlockSize(&minGrid, &blockSize,
                                   spmv_hll_warp_kernel, 0, 0);
@@ -562,9 +605,10 @@ int main() {
     // TEST 2: VERSIONE HLL WARP
     // =========================
     printf("\n--- TEST WARP PER RIGA HLL ---\n");
+    reset_medium_time_metrics();
     clear_gpu_cache(64);
-    for(int i = 0; i < NUM_ITERATION; i++) {
-        printf("Iterazione HLL-Warp numero: %d\n", i+1);
+    for(int i = 1; i < NUM_ITERATION; i++) {
+        printf("Iterazione HLL-Warp numero: %d\n", i);
         CUDA_CHECK(cudaMemset(d_y_hll, 0, csr_mat.M * sizeof(double)));
         CUDA_CHECK(cudaEventRecord(start));
 
@@ -584,29 +628,34 @@ int main() {
        	CUDA_CHECK(cudaEventSynchronize(stop));
 
     	// Controlla la correttezza del risultato ad ogni iterazione
-    	printf("Verifica risultato iterazione %d:\n", i+1);
-    	DiffMetrics diffMetrics = computeDifferenceMetrics(y_serial, y_hll, csr_mat.M);
-
-       	float milliseconds = 0;
-       	CUDA_CHECK(cudaEventElapsedTime(&milliseconds, start, stop));
-       	printf("Tempo Kernel-HLL-Warp: %f ms\n", milliseconds/1000.0f);
-    	update_medium_metric(WARP_HLL_TIME, milliseconds / 1000.0f);
-
-    	double flops_parallel = calculate_flops(csr_mat.nz, milliseconds/1000.0f);
-
-    	printf("Tempo esecuzione parallelo HLL: %f secondi\n", milliseconds/1000.0f);
-    	printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_parallel);
-    	print_flops(flops_parallel);
-
         CUDA_CHECK(cudaMemcpy(y_hll, d_y_hll, csr_mat.M * sizeof(double), cudaMemcpyDeviceToHost));
 
+    	printf("Verifica risultato iterazione %d:\n", i);
+    	DiffMetrics diffMetrics = computeDifferenceMetrics(y_serial, y_hll, csr_mat.M);
+        accumulateErrors(&diffMetrics, WARP_HLL_TIME);
+       	float milliseconds = 0;
+       	CUDA_CHECK(cudaEventElapsedTime(&milliseconds, start, stop));
+       	if(i > ITERATION_SKIP){
+        	printf("Tempo Kernel-HLL-Warp: %f ms\n", milliseconds/1000.0f);
+    		update_medium_metric(WARP_HLL_TIME, milliseconds / 1000.0f);
+    		double flops_parallel = calculate_flops(csr_mat.nz, milliseconds/1000.0f);
+    		printf("Tempo esecuzione parallelo HLL: %f secondi\n", milliseconds/1000.0f);
+    		printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_parallel);
+    		print_flops(flops_parallel);
+            printf("Errore relativo: %f\n", diffMetrics.mean_rel_err);
+            printf("Errore assoluto: %f\n", diffMetrics.mean_abs_err);
+        }
     }
+
 	PerformanceMetrics perf_metrics_hll_warp;
-    perf_metrics_hll_warp.time = get_metric_value(WARP_HLL_TIME) / NUM_ITERATION;
+    perf_metrics_hll_warp.time = get_metric_value(WARP_HLL_TIME);
     printf("Tempo medio Kernel-HLL-Warp: %f secondi\n", perf_metrics_hll_warp.time);
     perf_metrics_hll_warp.flops = calculate_flops(csr_mat.nz, perf_metrics_hll_warp.time);
     printf("Flops medi: ");
     print_flops(perf_metrics_hll_warp.flops);
+    DiffMetrics mediumHllWarp = computeAverageErrors(WARP_HLL_TIME);
+    printf("Errore relativo medio parallelo HLL Warp: %f\n", mediumHllWarp.mean_rel_err);
+    printf("Errore assoluto medio parallelo HLL Warp: %f\n", mediumHllWarp.mean_abs_err);
 
     for (int b = 0; b < hll_mat.num_blocks; b++) {
     	CUDA_CHECK(cudaFree(temp_blocks[b].JA));
@@ -651,7 +700,8 @@ int main() {
 						perf_metrics_warp_csr.time,perf_metrics_warp_shared_csr.time, perf_metrics_warp_shared_hll.time, perf_metrics_hll_naive.time, perf_metrics_hll_warp.time,
 						perf_metrics_serial_csr.flops, perf_metrics_serial_hll.flops, perf_metrics_naive_csr.flops,
 						perf_metrics_warp_csr.flops, perf_metrics_hll_naive.flops, perf_metrics_hll_warp.flops, perf_metrics_warp_shared_csr.flops, perf_metrics_warp_shared_hll.flops,
-						output_csv);
+						mediumCsrParallel, mediumCsrWarp, mediumCsrWarpShared, mediumHllNaive, mediumHllWarp, mediumHllWarpShared,
+                        output_csv);
 
 
     FREE_CHECK(temp_blocks);

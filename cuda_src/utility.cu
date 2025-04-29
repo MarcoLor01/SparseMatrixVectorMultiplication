@@ -11,8 +11,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <sys/stat.h>
-#include <matrix_parser.cuh>
-
+#include <mmio.h>
 
 #define MAX_CACHE 1024
 // Inizializza vettori a 1
@@ -98,7 +97,9 @@ void write_results_to_csv(const char *matrix_name, const int num_rows, const int
                           const double time_row_hll, const double time_warp_hll,
                           const double flops_serial, const double avg_flops_hll_serial, const double flops_row_csr,
                           const double flops_warp_csr, const double flops_row_hll, const double flops_warp_hll, const double flops_warp_csr_shared,
-                          const double flops_warp_shared_hll,
+                          const double flops_warp_shared_hll, DiffMetrics mediumCsrParallel, DiffMetrics mediumCsrWarp,
+                          DiffMetrics mediumCsrWarpShared, DiffMetrics mediumHllNaive,
+                          DiffMetrics mediumHllWarp, DiffMetrics mediumHllWarpShared,
                           const char *output_file) {
     FILE *fp = fopen(output_file, "a+");  // Append + read
 
@@ -112,15 +113,24 @@ void write_results_to_csv(const char *matrix_name, const int num_rows, const int
     long size = ftell(fp);
     if (size == 0) {
         fprintf(fp, "matrix_name,rows,cols,nonzeros,"
-                    "time_serial,time_serial_hll,time_row_csr,time_warp_csr,time_warp_shared_csr, time_row_hll,time_warp_hll,time_warp_shared_hll,"
-                    "flops_serial,avg_flops_hll_serial,flops_row_csr,flops_warp_csr,flops_warp_csr_shared,flops_row_hll,flops_warp_hll,flops_warp_shared_hll\n");
+            "time_serial,time_serial_hll,time_row_csr,time_warp_csr,time_warp_shared_csr,time_row_hll,time_warp_hll,time_warp_shared_hll,"
+            "flops_serial,avg_flops_hll_serial,flops_row_csr,flops_warp_csr,flops_warp_csr_shared,flops_row_hll,flops_warp_hll,flops_warp_shared_hll,"
+            "relative_error_row_csr,absolute_error_row_csr,"
+            "relative_error_warp_csr,absolute_error_warp_csr,"
+            "relative_error_warp_shared_csr,absolute_error_warp_shared_csr,"
+            "relative_error_row_hll,absolute_error_row_hll,"
+            "relative_error_warp_hll,absolute_error_warp_hll,"
+            "relative_error_warp_shared_hll,absolute_error_warp_shared_hll\n");
     }
 
     // Scrivi una riga di dati
-    fprintf(fp, "%s,%d,%d,%d,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f\n",
+    fprintf(fp, "%s,%d,%d,%d,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f,%.15f\n",
             matrix_name, num_rows, num_cols, nz,
             time_serial, time_serial_hll, time_row_csr, time_warp_csr, time_warp_csr_shared, time_row_hll, time_warp_hll, time_warp_shared_hll,
-            flops_serial, avg_flops_hll_serial, flops_row_csr, flops_warp_csr, flops_warp_csr_shared, flops_row_hll, flops_warp_hll, flops_warp_shared_hll);
+            flops_serial, avg_flops_hll_serial, flops_row_csr, flops_warp_csr, flops_warp_csr_shared, flops_row_hll, flops_warp_hll, flops_warp_shared_hll,
+            mediumCsrParallel.mean_rel_err, mediumCsrParallel.mean_abs_err, mediumCsrWarp.mean_rel_err, mediumCsrWarp.mean_abs_err,
+            mediumCsrWarpShared.mean_rel_err, mediumCsrWarpShared.mean_abs_err, mediumHllNaive.mean_rel_err, mediumHllNaive.mean_abs_err,
+            mediumHllWarp.mean_rel_err, mediumHllWarp.mean_abs_err, mediumHllWarpShared.mean_rel_err, mediumHllWarpShared.mean_abs_err);
     fclose(fp);
 
 }

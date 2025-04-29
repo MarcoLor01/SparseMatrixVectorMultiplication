@@ -1,10 +1,11 @@
 #ifndef UTILITY_CUH
 #define UTILITY_CUH
-
-
+#define ITERATION_SKIP 5
 #define MAX_CACHE 1024
 #define WARP_SIZE 32
-
+#include <cuda_runtime.h>
+#include <matrix_parser.cuh>
+#include <performance_calculate.cuh>
 #define CUDA_CHECK(call)                                                      \
 do {                                                                          \
     cudaError_t err = call;                                                   \
@@ -32,8 +33,10 @@ void write_results_to_csv(const char *matrix_name, const int num_rows, const int
                           const double time_row_hll, const double time_warp_hll,
                           const double flops_serial, const double avg_flops_hll_serial, const double flops_row_csr,
                           const double flops_warp_csr, const double flops_row_hll, const double flops_warp_hll, const double flop_warp_csr_shared,
-                          const double flops_warp_shared_hll,
+                          const double flops_warp_shared_hll, DiffMetrics mediumCsrParallel, DiffMetrics mediumCsrWarp,
+                          DiffMetrics mediumCsrWarpShared, DiffMetrics mediumHllNaive, DiffMetrics mediumHllWarp, DiffMetrics mediumHllWarpShared,
                           const char *output_file);
+
 void calculate_and_print_thread_averages(int num_thread, const char *output_summary_file);
 void swap(int *a, int *b);
 void swap_double(double *a, double *b);

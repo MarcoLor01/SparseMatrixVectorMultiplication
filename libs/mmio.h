@@ -16,7 +16,7 @@ extern "C" {
 #define MM_MAX_LINE_LENGTH 1025
 #define MatrixMarketBanner "%%MatrixMarket"
 #define MM_MAX_TOKEN_LENGTH 64
-
+#include <stdio.h>
 
 typedef char MM_typecode[4];
 

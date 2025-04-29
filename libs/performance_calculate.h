@@ -54,8 +54,6 @@ struct DifferenceMetrics computeDifferenceMetrics(
 void initialize_metrics();
 void cleanup_metrics();
 double get_metric_value(MediumPerformanceMetric type);
-double get_metric_min(MediumPerformanceMetric type);
-double get_metric_max(MediumPerformanceMetric type);
 double get_metric_error(MediumPerformanceMetric type);
 double get_metric_stddev(MediumPerformanceMetric type);
 double get_metric_variance(MediumPerformanceMetric type);

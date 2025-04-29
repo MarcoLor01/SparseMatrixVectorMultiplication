@@ -1,10 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "matrix_parser.cuh"
-
 #include <stdbool.h>
 #include <string.h>
 #include "mmio.h"
+#include "matrix_parser.cuh"
 #include "utility.cuh"
 
 void init_pre_matrix(PreMatrix *mat) {

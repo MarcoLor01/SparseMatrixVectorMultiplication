@@ -3,23 +3,35 @@
 //
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
 #include "performance_calculate.cuh"
+#include <utility.cuh>
 
-double metrics[NUM_METRICS] = {0.0};
+MetricStats metrics[NUM_METRICS];
 
-// Funzione per ottenere il valore di una metrica
-double get_metric_value(const MediumPerformanceMetric type) {
-    return metrics[type];
+void initialize_metrics() {
+    for (int i = 0; i < NUM_METRICS; i++) {
+        metrics[i].sum = 0.0;
+        metrics[i].count = 0;
+        metrics[i].capacity = INITIAL_CAPACITY;
+        metrics[i].relative_error = 0.0;
+        metrics[i].absolute_error = 0.0;
+    }
 }
 
-// Funzione generica per aggiornare qualsiasi metrica
-void update_medium_metric(const MediumPerformanceMetric type, const double value) {
-    metrics[type] += value;
+// Funzione per ottenere il valore medio di una metrica
+double get_metric_value(const MediumPerformanceMetric type) {
+    if (metrics[type].count == 0) return 0.0;
+    return metrics[type].sum / metrics[type].count;
 }
 
 void reset_medium_time_metrics() {
     for (int i = 0; i < NUM_METRICS; i++) {
-        metrics[i] = 0.0;
+        metrics[i].sum = 0.0;
+        metrics[i].count = 0;
+        metrics[i].relative_error = 0.0;
+        metrics[i].absolute_error = 0.0;
     }
 }
 
@@ -42,6 +54,45 @@ void print_flops(double flops) {
     printf("%.3f %s\n", flops, units[unit_index]);
 }
 
+
+// Funzione per il calcolo dell'errore relativo
+double get_relative_error(const MediumPerformanceMetric type) {
+    if (metrics[type].count == 0) return 0.0;
+    return metrics[type].relative_error;
+}
+
+// Funzione per ottenere l'errore assoluto
+double get_absolute_error(const MediumPerformanceMetric type) {
+    if (metrics[type].count == 0) return 0.0;
+    return metrics[type].absolute_error;
+}
+
+void accumulateErrors(const DiffMetrics* iteration_metrics, const MediumPerformanceMetric type) {
+    metrics[type].absolute_error += iteration_metrics->mean_abs_err;
+    metrics[type].relative_error += iteration_metrics->mean_rel_err;
+}
+
+DiffMetrics computeAverageErrors(const MediumPerformanceMetric type) {
+    DiffMetrics average = {0.0, 0.0};
+
+    if (metrics[type].count > 0) {
+        average.mean_abs_err = get_absolute_error(type) / (metrics[type].count + ITERATION_SKIP);
+        average.mean_rel_err = get_relative_error(type) / (metrics[type].count + ITERATION_SKIP);
+    }
+
+    return average;
+}
+
+// Funzione per aggiornare una metrica
+void update_medium_metric(const MediumPerformanceMetric type, const double value) {
+    metrics[type].sum += value;
+
+    if (metrics[type].count >= metrics[type].capacity) {
+        metrics[type].capacity *= 2;
+    }
+
+    metrics[type].count++;
+}
 
 DifferenceMetrics computeDifferenceMetrics(
     const double* ref,

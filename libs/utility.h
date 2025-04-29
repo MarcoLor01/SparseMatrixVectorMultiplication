@@ -1,6 +1,6 @@
 #ifndef UTILITY_H
 #define UTILITY_H
-#include <stdbool.h>
+
 #include <matrix_parser.h>
 #include <performance_calculate.h>
 
@@ -14,7 +14,6 @@ do {                              \
 } while (0)
 
 void init_vector_at_one(double *v, const int size);
-double checkDifferences(const double *y_h, const double *y_SerialResult, int matrix_row, bool full_print);
 void write_results_to_csv(const char *matrix_name, const int num_rows, const int num_cols, const int nz,
                           const int num_threads, const double time_serial, const double time_serial_hll, const double time_parallel,
                           const double time_parallel_simd, const double time_parallel_hll, const double time_parallel_hll_simd,

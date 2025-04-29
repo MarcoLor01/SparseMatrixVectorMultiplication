@@ -237,7 +237,6 @@ int main() {
             printf("Errore relativo medio parallelo CSR: %f\n", mediumCsrParallel.mean_rel_err);
             printf("Errore assoluto medio parallelo CSR: %f\n", mediumCsrParallel.mean_abs_err);
 
-
             // ================================
             // TEST 4: VERSIONE PARALLELA HLL
             // ================================
@@ -258,8 +257,9 @@ int main() {
                          thread_row_start_hll, thread_row_end_hll);
                 double end = omp_get_wtime();
                 double time_parallel_hll = end - start;
-
 				DiffMetrics diffMetricsParallelHll = computeDifferenceMetrics(y_serial, y_hll, csr_mat.M, 1e-5, 1e-4, true);
+                accumulateErrors(&diffMetricsParallelHll, PARALLEL_HLL_TIME);
+
                 if(j > ITERATION_SKIP){
                     update_medium_metric(PARALLEL_HLL_TIME, time_parallel_hll);
                     double flops_hll = calculate_flops(csr_mat.nz, time_parallel_hll);
@@ -270,6 +270,7 @@ int main() {
                     printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_hll);
                     print_flops(flops_hll);
                     printf("Errore relativo: %f\n", diffMetricsParallelHll.mean_rel_err);
+                    printf("Errore assoluto: %f\n", diffMetricsParallelHll.mean_abs_err);
                     printf("Valore dello speed-up: %f\n", speedup_hll);
                     printf("Valore efficienza: %f\n", efficiency_hll);
                 }
@@ -319,6 +320,7 @@ int main() {
                     printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_hll_simd);
                     print_flops(flops_hll_simd);
                     printf("Errore relativo: %f\n", diffMetricsHllSimd.mean_rel_err);
+                    printf("Errore assoluto: %f\n", diffMetricsHllSimd.mean_abs_err);
                     printf("Valore dello speed-up: %f\n", speedup_hll_simd);
                     printf("Valore efficienza: %f\n", efficiency_hll_simd);
 
