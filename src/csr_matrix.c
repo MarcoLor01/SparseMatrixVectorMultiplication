@@ -83,16 +83,6 @@ int convert_in_csr(const PreMatrix *pre, CSRMatrix *csr, const char* matrix_name
     size_t values_size = csr->nz * sizeof(double);
     size_t total_memory = row_ptr_size + col_idx_size + values_size;
 
-    printf("Analisi memoria CSR:\n");
-    printf("- Dimensione row_ptr: %zu bytes (%.2f KB)\n", row_ptr_size, row_ptr_size/1024.0);
-    printf("- Dimensione col_idx: %zu bytes (%.2f KB)\n", col_idx_size, col_idx_size/1024.0);
-    printf("- Dimensione values: %zu bytes (%.2f KB)\n", values_size, values_size/1024.0);
-    printf("- Memoria totale: %zu bytes (%.2f KB, %.2f MB)\n",
-           total_memory, total_memory/1024.0, total_memory/(1024.0*1024.0));
-
-    // Scrivi le statistiche di memoria nel file CSV
-    write_memory_stats_to_csv(matrix_name, csr->nz, total_memory);
-
     // Conta gli elementi per riga
     for (int i = 0; i < pre->nz; i++) {
         csr->row_ptr[pre->I[i] + 1]++;

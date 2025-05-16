@@ -353,9 +353,9 @@ __global__ void spmv_hll_naive_kernel(
 
     // Ogni thread calcola un elemento y[tid], se tid è una riga valida
     if (tid < total_M) {
-        // Calcola l'indice del blocco e la riga locale dentro quel blocco
-        int block_idx = tid / HACK_SIZE;
-        int local_row = tid % HACK_SIZE;
+
+        int block_idx = tid / HACK_SIZE; //tid è la riga, tid / HACK_SIZE è il blocco
+        int local_row = tid % HACK_SIZE; //Ora siamo nel blocco, e quindi uso operatore %
 
 
         ELLPACKBlock block = blocks[block_idx];
@@ -392,7 +392,7 @@ __global__ void spmv_hll_warp_kernel(
         int block_idx = warp_id / HACK_SIZE;
         int local_row = warp_id % HACK_SIZE; // Riga da usare dentro il blocco
 
-        // Accedi al blocco corretto (SOLO UNO per warp)
+        // Accedi al blocco corretto
         ELLPACKBlock block = blocks[block_idx];
 
         // Ottieni i puntatori e le dimensioni del blocco specifico
@@ -424,6 +424,7 @@ __global__ void spmv_hll_warp_kernel(
         }
     }
 }
+
 __global__ void spmv_hll_warp_shared_kernel_v1(
     int total_M,
     const ELLPACKBlock *blocks,
@@ -454,7 +455,7 @@ __global__ void spmv_hll_warp_shared_kernel_v1(
 
     // Carica in shared memory i valori x necessari
     for (int j = lane_id; j < block_MAXNZ; j += 32) {
-        int col = block.JA[local_row * block_MAXNZ + j];
+        int col = block.JA[local_row * block_MAXNZ + j]; //Prendo il valore della colonna, i thread del warp collaborano
         warp_x[j] = x[col];
     }
 

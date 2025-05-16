@@ -94,11 +94,21 @@ void update_medium_metric(const MediumPerformanceMetric type, const double value
     metrics[type].count++;
 }
 
+
+#include <cmath>
+#include <cstdio>
+#include <algorithm>
+
+
+#include <cmath>
+#include <cstdio>
+#include <algorithm>
+
+
 DifferenceMetrics computeDifferenceMetrics(
     const double* ref,
     const double* res,
     int n,
-    double abs_tol,
     double rel_tol,
     bool print_summary
 )
@@ -108,9 +118,9 @@ DifferenceMetrics computeDifferenceMetrics(
     if (n <= 0) {
         if (print_summary) {
             printf("--- Comparison Summary ---\n");
-            printf("Vector size        : 0\n");
-            printf("Result             : PASS (empty vectors)\n");
-            printf("------------------------\n");
+            printf("Vector size           : 0\n");
+            printf("Result                : PASS (empty vectors)\n");
+            printf("---------------------------\n");
         }
         return metrics;
     }
@@ -120,13 +130,12 @@ DifferenceMetrics computeDifferenceMetrics(
 
     for (int i = 0; i < n; ++i) {
         double abs_diff = std::fabs(ref[i] - res[i]);
-        double ref_abs = std::fabs(ref[i]);
+        double max_abs = std::fmax(std::fabs(ref[i]), std::fabs(res[i]));
+        double denominator = std::fmax(max_abs, rel_tol); // evita div/0
+        double rel_diff = abs_diff / denominator;
 
         sum_abs_err += abs_diff;
-
-        if (ref_abs > abs_tol) {
-            sum_rel_err += abs_diff / ref_abs;
-        }
+        sum_rel_err += rel_diff;
     }
 
     metrics.mean_abs_err = sum_abs_err / n;
@@ -134,11 +143,13 @@ DifferenceMetrics computeDifferenceMetrics(
 
     if (print_summary) {
         printf("--- Comparison Summary ---\n");
-        printf("Vector size         : %d\n", n);
-        printf("Mean Absolute Error : %.10e\n", metrics.mean_abs_err);
-        printf("Mean Relative Error : %.10e\n", metrics.mean_rel_err);
-        printf("------------------------\n");
+        printf("Vector size           : %d\n", n);
+        printf("Mean Absolute Error   : %.10e\n", metrics.mean_abs_err);
+        printf("Mean Relative Error   : %.10e\n", metrics.mean_rel_err);
+        printf("---------------------------\n");
     }
 
     return metrics;
 }
+
+

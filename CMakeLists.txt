@@ -58,13 +58,13 @@ if(ENABLE_CUDA)
     )
 
     add_executable(SpMV_CUDA ${CUDA_SOURCES})
+    target_include_directories(SpMV_CUDA PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cuda_libs)
 
     set_target_properties(SpMV_CUDA
             PROPERTIES
             CUDA_SEPARABLE_COMPILATION ON
             CUDA_ARCHITECTURES native
     )
-
 
     add_library(mmio STATIC libs/mmio.c)
     target_link_libraries(SpMV_CUDA PRIVATE mmio CUDA::cudart m)

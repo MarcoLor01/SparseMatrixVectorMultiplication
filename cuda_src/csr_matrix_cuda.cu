@@ -128,7 +128,7 @@ __global__ void spmv_csr_naive_kernel(
     double *y           // Vettore di output
 ) {
     // Calcola l'indice della riga da elaborare
-    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    int row = blockIdx.x * blockDim.x + threadIdx.x; //Blocco in cui mi trovo * Thread nel blocco * Thread ID
 
     // Verifica che l'indice sia valido
     if (row < M) {
@@ -157,7 +157,7 @@ __global__ void spmv_csr_warp_kernel(
     double *y           // Vettore di output
 ) {
     // Identificativo del warp all'interno della griglia
-    int warp_id = (blockIdx.x * blockDim.x + threadIdx.x) / 32;
+    int warp_id = (blockIdx.x * blockDim.x + threadIdx.x) / 32; //Come precedentemente, ma divido per 32 essendo la dimensione del warp
 
     // Identificativo del thread all'interno del warp (0-31)
     int lane_id = threadIdx.x % 32;
@@ -180,12 +180,15 @@ __global__ void spmv_csr_warp_kernel(
         }
 
         // Riduzione parallela all'interno del warp
-        #pragma unroll
+        #pragma unroll //Consigliamo al compilatore di sviluppare come sequenza di istruzioni lineari
+                       // invece di un ciclo con controllo di flusso
         for (int offset = 16; offset > 0; offset /= 2) {
-            dot += __shfl_down_sync(0xffffffff, dot, offset);
+            dot += __shfl_down_sync(0xffffffff, dot, offset); //Ogni thread ha una parte del risultato finale, sommo
+            //Ora con offset di 16 andando a ridurre ogni volta, avrò quindi ad es. nel primo passo thr. 0 + thr. 16,
+            //nel secondo thread.0 + thread.8, ecc. fino ad avere nel thread 0 tutto il risultato accumulato.
         }
 
-        // Solo il primo thread del warp (lane_id == 0) scrive il risultato
+        // Solo il primo thread del warp (lane_id == 0) scrive il risultato, perchè ora possiede tutto
         if (lane_id == 0) {
             y[row] = dot;
         }
@@ -194,7 +197,7 @@ __global__ void spmv_csr_warp_kernel(
 
 __global__ void spmv_csr_warp_shared_memory_kernel(
     int M, const int *row_ptr, const int *col_idx, const double *values,
-    const double *x, double *y
+    const double *x, double *y, int cacheSize
 ) {
     extern __shared__ double s_x[];
     int thread_id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -205,8 +208,9 @@ __global__ void spmv_csr_warp_shared_memory_kernel(
 
     // Carica collaborativamente i valori di x nella memoria condivisa
 
-    for(int i = threadIdx.x; i < MAX_CACHE && i < M; i += blockDim.x) {
-        s_x[i] = x[i];
+    for(int i = threadIdx.x; i < cacheSize; i += blockDim.x) {
+        s_x[i] = x[i]; //Inserisco il valore di x nelle posizione riservate al thread, che saranno quindi nel punto iniziale
+        //l'indice del thread nel blocco, e poi andremo avanti per il numero di thread nel blocco.
     }
 
     // Sincronizza tutti i thread nel blocco
@@ -231,7 +235,7 @@ __global__ void spmv_csr_warp_shared_memory_kernel(
     // Riduzione e scrittura
     #pragma unroll
     for(int offset = 16; offset > 0; offset /= 2)
-        sum += __shfl_down_sync(0xFFFFFFFF, sum, offset);
+        sum += __shfl_down_sync(0xffffffff, sum, offset);
 
     if(lane_id == 0) y[warp_id] = sum;
 }

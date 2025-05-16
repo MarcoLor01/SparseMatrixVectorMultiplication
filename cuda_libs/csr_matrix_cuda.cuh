@@ -44,6 +44,7 @@ __global__ void spmv_csr_warp_shared_memory_kernel(
     const int *col_idx,
     const double *values,
     const double *x,
-    double *y
+    double *y,
+    int cacheSize
 );
 #endif // CSR_MATRIX_CUDA_CUH

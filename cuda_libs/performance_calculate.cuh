@@ -31,7 +31,7 @@ typedef enum {
 typedef struct DifferenceMetrics {
     double mean_abs_err;
     double mean_rel_err;
-    int iterations;
+    int significant_diffs;
 } DiffMetrics;
 
 typedef struct performance_metrics {
@@ -50,7 +50,6 @@ DifferenceMetrics computeDifferenceMetrics(
     const double* ref,
     const double* res,
     int n,
-    double abs_tol = 1e-5,
     double rel_tol = 1e-4,
     bool print_summary = true
 );

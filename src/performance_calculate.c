@@ -114,48 +114,63 @@ void print_flops(double flops) {
 }
 
 struct DifferenceMetrics computeDifferenceMetrics(
-    const double* ref,
-    const double* res,
-    int n,
-    double abs_tol,
-    double rel_tol,
-    bool print_summary
-)
-{
-    struct DifferenceMetrics metrics = {0.0, 0.0};
+    const double* ref, const double* res, int n,
+    double abs_tol, double rel_tol, bool print_summary
+) {
+    struct DifferenceMetrics metrics = {0.0, 0.0, 0};
 
     if (n <= 0) {
         if (print_summary) {
             printf("--- Comparison Summary ---\n");
-            printf("Vector size         : 0\n");
-            printf("Result              : PASS (empty vectors)\n");
+            printf("Vector size : 0\n");
+            printf("Result : PASS (empty vectors)\n");
             printf("----------------------------\n");
         }
         return metrics;
     }
 
-    double sum_abs_err = 0.0;
     double sum_rel_err = 0.0;
+    int significant_diffs = 0;
 
     for (int i = 0; i < n; ++i) {
+        // Differenza assoluta
         double abs_diff = fabs(ref[i] - res[i]);
-        double ref_abs = fabs(ref[i]);
 
-        sum_abs_err += abs_diff;
+        // Valore assoluto massimo
+        double max_abs = fmax(fabs(ref[i]), fabs(res[i]));
 
-        if (ref_abs > abs_tol) {
-            sum_rel_err += abs_diff / ref_abs;
+        // Soglia minima per il denominatore
+        double denominator = fmax(max_abs, rel_tol);
+
+        // Differenza relativa
+        double rel_diff = 0.0;
+        if (abs_diff > abs_tol) {
+            rel_diff = abs_diff / denominator;
+        }
+
+        // Conta le discrepanze significative
+        if (rel_diff > rel_tol) {
+            sum_rel_err += rel_diff;
+            significant_diffs++;
         }
     }
 
-    metrics.mean_abs_err = sum_abs_err / n;
-    metrics.mean_rel_err = sum_rel_err / n;
+    metrics.mean_abs_err = 0.0; // Non utilizzato in questa formulazione
+
+    // Media delle differenze relative significative
+    if (significant_diffs > 0) {
+        metrics.mean_rel_err = sum_rel_err / significant_diffs;
+    } else {
+        metrics.mean_rel_err = 0.0;
+    }
+
+    metrics.significant_diffs = significant_diffs;
 
     if (print_summary) {
         printf("--- Comparison Summary ---\n");
-        printf("Vector size         : %d\n", n);
-        printf("Mean Absolute Error : %.10e\n", metrics.mean_abs_err);
-        printf("Mean Relative Error : %.10e\n", metrics.mean_rel_err);
+        printf("Vector size : %d\n", n);
+        printf("Significant differences : %d\n", significant_diffs);
+        printf("Mean Significant Relative Error : %.10e\n", metrics.mean_rel_err);
         printf("----------------------------\n");
     }
 

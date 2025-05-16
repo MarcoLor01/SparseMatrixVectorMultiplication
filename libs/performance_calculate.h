@@ -33,6 +33,7 @@ typedef enum {
 typedef struct DifferenceMetrics {
     double mean_abs_err;
     double mean_rel_err;
+    int significant_diffs;
 } DiffMetrics;
 
 typedef struct performance_metrics {

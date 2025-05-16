@@ -362,8 +362,9 @@ void spmv_hll_simd(const ELLPACKBlock *blocks, const double *x, double *y, int n
                 #pragma omp simd reduction(+:sum)
                 for (int j = 0; j < maxnz; j++) {
                     const int idx = i * maxnz + j;
-                    const int col = block_JA[idx];
-                    sum += block_AS[idx] * x[col];
+                    const double val = block_AS[idx];
+                        const int col = block_JA[idx];
+                        sum += val * x[col];
                 }
 
                 y[row_offset + i] = sum;
@@ -395,8 +396,9 @@ void spmv_hll(const ELLPACKBlock *blocks, const double *x, double *y, int num_th
 
                 for (int j = 0; j < maxnz; j++) {
                     const int idx = i * maxnz + j;
-                    const int col = block_JA[idx];
-                    sum += block_AS[idx] * x[col];
+                    const double val = block_AS[idx];
+                        const int col = block_JA[idx];
+                        sum += val * x[col];
                 }
 
                 y[row_offset + i] = sum;

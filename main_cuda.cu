@@ -12,6 +12,8 @@
 #include "matrix_parser.cuh"
 #include "utility.cuh"
 #include "hll_matrix.cuh"
+#include <helper_cuda.h>
+
 #define NUM_ITERATION 95 + ITERATION_SKIP
 
 
@@ -83,8 +85,8 @@ int main() {
         // TEST 1: VERSIONE SERIALE (CSR)
         // ================================
         cudaEvent_t start, stop;
-    	CUDA_CHECK(cudaEventCreate(&start));
-    	CUDA_CHECK(cudaEventCreate(&stop));
+    	checkCudaErrors(cudaEventCreate(&start));
+    	checkCudaErrors(cudaEventCreate(&stop));
 
         // Esecuzione seriale per confronto
     	printf("\n--- TEST SERIALE CSR ---\n");
@@ -129,17 +131,17 @@ int main() {
     	double *d_y;
 
     	// Allocazione memoria sulla GPU
-    	CUDA_CHECK(cudaMalloc((void **)&d_row_ptr, (csr_mat.M + 1) * sizeof(int)));
-    	CUDA_CHECK(cudaMalloc((void **)&d_col_idx, csr_mat.nz * sizeof(int)));
-    	CUDA_CHECK(cudaMalloc((void **)&d_values, csr_mat.nz * sizeof(double)));
-    	CUDA_CHECK(cudaMalloc((void **)&d_x, csr_mat.N * sizeof(double)));
-    	CUDA_CHECK(cudaMalloc((void **)&d_y, csr_mat.M * sizeof(double)));
+    	checkCudaErrors(cudaMalloc((void **)&d_row_ptr, (csr_mat.M + 1) * sizeof(int)));
+    	checkCudaErrors(cudaMalloc((void **)&d_col_idx, csr_mat.nz * sizeof(int)));
+    	checkCudaErrors(cudaMalloc((void **)&d_values, csr_mat.nz * sizeof(double)));
+    	checkCudaErrors(cudaMalloc((void **)&d_x, csr_mat.N * sizeof(double)));
+    	checkCudaErrors(cudaMalloc((void **)&d_y, csr_mat.M * sizeof(double)));
 
     	// Copia dei dati dalla CPU alla GPU
-    	CUDA_CHECK(cudaMemcpy(d_row_ptr, csr_mat.row_ptr, (csr_mat.M + 1) * sizeof(int), cudaMemcpyHostToDevice));
-    	CUDA_CHECK(cudaMemcpy(d_col_idx, csr_mat.col_idx, csr_mat.nz * sizeof(int), cudaMemcpyHostToDevice));
-    	CUDA_CHECK(cudaMemcpy(d_values, csr_mat.values, csr_mat.nz * sizeof(double), cudaMemcpyHostToDevice));
-    	CUDA_CHECK(cudaMemcpy(d_x, x, csr_mat.N * sizeof(double), cudaMemcpyHostToDevice));
+    	checkCudaErrors(cudaMemcpy(d_row_ptr, csr_mat.row_ptr, (csr_mat.M + 1) * sizeof(int), cudaMemcpyHostToDevice));
+    	checkCudaErrors(cudaMemcpy(d_col_idx, csr_mat.col_idx, csr_mat.nz * sizeof(int), cudaMemcpyHostToDevice));
+    	checkCudaErrors(cudaMemcpy(d_values, csr_mat.values, csr_mat.nz * sizeof(double), cudaMemcpyHostToDevice));
+    	checkCudaErrors(cudaMemcpy(d_x, x, csr_mat.N * sizeof(double), cudaMemcpyHostToDevice));
 
         // Configurazione dei parametri per il lancio del kernel
         int minGrid, blockSize, blocksPerGrid, threadsPerBlock;
@@ -155,29 +157,29 @@ int main() {
         clear_gpu_cache(64);
     	for(int i = 1; i < NUM_ITERATION; i++) {
             printf("Iterazione numero: %d\n", i);
-            CUDA_CHECK(cudaMemset(d_y, 0, csr_mat.M * sizeof(double)));
+            checkCudaErrors(cudaMemset(d_y, 0, csr_mat.M * sizeof(double)));
             // Registra l'evento di inizio
-            CUDA_CHECK(cudaEventRecord(start));
+            checkCudaErrors(cudaEventRecord(start));
 
             // Lancio del kernel CUDA
             spmv_csr_naive_kernel<<<blocksPerGrid, threadsPerBlock>>>(
                 csr_mat.M, d_row_ptr, d_col_idx, d_values, d_x, d_y
             );
 
-            CUDA_CHECK(cudaGetLastError());
+            checkCudaErrors(cudaGetLastError());
 
             // Registra l'evento di fine
-            CUDA_CHECK(cudaEventRecord(stop));
+            checkCudaErrors(cudaEventRecord(stop));
 
             // Aspetta la fine dell'esecuzione
-            CUDA_CHECK(cudaEventSynchronize(stop));
+            checkCudaErrors(cudaEventSynchronize(stop));
 
             // Calcola il tempo trascorso
             float milliseconds = 0;
-            CUDA_CHECK(cudaEventElapsedTime(&milliseconds, start, stop));
+            checkCudaErrors(cudaEventElapsedTime(&milliseconds, start, stop));
 
     		// Copia il risultato ad ogni iterazione
-    		CUDA_CHECK(cudaMemcpy(y_parallel_csr, d_y, csr_mat.M * sizeof(double), cudaMemcpyDeviceToHost));
+    		checkCudaErrors(cudaMemcpy(y_parallel_csr, d_y, csr_mat.M * sizeof(double), cudaMemcpyDeviceToHost));
 
     		// Controlla la correttezza del risultato ad ogni iterazione
     		printf("Verifica risultato iterazione %d:\n", i);
@@ -211,11 +213,13 @@ int main() {
 
 		// Assicurati che blockSize sia multiplo di 32 (dimensione di un warp)
 		blockSize = (blockSize / 32) * 32;
+        if (blockSize < 32) blockSize = 32;
 		int warps_per_block = blockSize / 32;
 		int threadsPerBlock_warp = blockSize;
 
 		// Un warp per riga, quindi M warps totali
-		int blocksPerGrid_warp = (csr_mat.M + warps_per_block - 1) / warps_per_block;
+		int blocksPerGrid_warp = (csr_mat.M + warps_per_block - 1) / warps_per_block; //Devo distribuire le righe
+                //su un certo numero di blocchi, effettuo quindi divisione intero
 
         // ======================================
         // TEST 3: VERSIONE WARP PER RIGA (CSR)
@@ -225,29 +229,29 @@ int main() {
     	clear_gpu_cache(64);
         for(int i = 1; i < NUM_ITERATION; i++) {
             printf("Iterazione numero: %d\n", i);
-            CUDA_CHECK(cudaMemset(d_y, 0, csr_mat.M * sizeof(double)));
+            checkCudaErrors(cudaMemset(d_y, 0, csr_mat.M * sizeof(double)));
             // Registra l'evento di inizio
-            CUDA_CHECK(cudaEventRecord(start));
+            checkCudaErrors(cudaEventRecord(start));
 
             // Lancio del kernel CUDA warp-based
             spmv_csr_warp_kernel<<<blocksPerGrid_warp, threadsPerBlock_warp>>>(
                 csr_mat.M, d_row_ptr, d_col_idx, d_values, d_x, d_y
             );
 
-            CUDA_CHECK(cudaGetLastError());
+            checkCudaErrors(cudaGetLastError());
 
             // Registra l'evento di fine
-            CUDA_CHECK(cudaEventRecord(stop));
+            checkCudaErrors(cudaEventRecord(stop));
 
             // Aspetta la fine dell'esecuzione
-            CUDA_CHECK(cudaEventSynchronize(stop));
+            checkCudaErrors(cudaEventSynchronize(stop));
 
             // Calcola il tempo trascorso
             float milliseconds = 0;
-            CUDA_CHECK(cudaEventElapsedTime(&milliseconds, start, stop));
+            checkCudaErrors(cudaEventElapsedTime(&milliseconds, start, stop));
 
         	// Copia il risultato ad ogni iterazione
-        	CUDA_CHECK(cudaMemcpy(y_parallel_csr, d_y, csr_mat.M * sizeof(double), cudaMemcpyDeviceToHost));
+        	checkCudaErrors(cudaMemcpy(y_parallel_csr, d_y, csr_mat.M * sizeof(double), cudaMemcpyDeviceToHost));
 
         	// Controlla la correttezza del risultato ad ogni iterazione
         	printf("Verifica risultato iterazione %d:\n", i);
@@ -277,7 +281,8 @@ int main() {
         // ==================================================
         // TEST 4: VERSIONE WARP PER RIGA E MEMORIA CONDIVISA (CSR)
         // ==================================================
-		size_t sharedMemSize = sizeof(double) * min(csr_mat.N, MAX_CACHE);
+        int cacheElements = min(csr_mat.N, MAX_CACHE);
+		size_t sharedMemSize = sizeof(double) * cacheElements;
 
 		// Funzione lambda per calcolare la shared memory in base alla dimensione del blocco
 		auto sharedMemCalculator = [&](int blockSize) {
@@ -287,8 +292,12 @@ int main() {
 		cudaOccupancyMaxPotentialBlockSizeVariableSMem(&minGrid, &blockSize,
                                              spmv_csr_warp_shared_memory_kernel,
                                              sharedMemCalculator, 0);
+        //Dobbiamo gestire bene il numero di blocchi attivi e il tradeoff con la mem. condivisa, abbiamo infatti un
+                //limite della mem. condivisa disponibile, quindi la quantità assegnata ad ogni blocco limita
+                //necessariamente il numero di blocchi attivi
 
-		blockSize = (blockSize / 32) * 32;
+		blockSize = (blockSize +31 / 32) * 32;
+        if (blockSize < 32) blockSize = 32;
 		int warpsPerBlock = blockSize / 32;
 		threadsPerBlock = blockSize;
 
@@ -299,33 +308,36 @@ int main() {
         clear_gpu_cache(64);
         for(int i = 1; i < NUM_ITERATION; i++) {
             printf("Iterazione numero: %d\n", i);
-            CUDA_CHECK(cudaMemset(d_y, 0, csr_mat.M * sizeof(double)));
+            checkCudaErrors(cudaMemset(d_y, 0, csr_mat.M * sizeof(double)));
             // Registra l'evento di inizio
-            CUDA_CHECK(cudaEventRecord(start));
+            checkCudaErrors(cudaEventRecord(start));
 
             // Lancio del kernel CUDA warp-based con shared memory
             spmv_csr_warp_shared_memory_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(
-                csr_mat.M, d_row_ptr, d_col_idx, d_values, d_x, d_y
+                csr_mat.M, d_row_ptr, d_col_idx, d_values, d_x, d_y, cacheElements
             );
 
-            CUDA_CHECK(cudaGetLastError());
+            checkCudaErrors(cudaGetLastError());
 
             // Registra l'evento di fine
-            CUDA_CHECK(cudaEventRecord(stop));
+            checkCudaErrors(cudaEventRecord(stop));
 
             // Aspetta la fine dell'esecuzione
-            CUDA_CHECK(cudaEventSynchronize(stop));
+            checkCudaErrors(cudaEventSynchronize(stop));
 
             // Calcola il tempo trascorso
             float milliseconds = 0;
-            CUDA_CHECK(cudaEventElapsedTime(&milliseconds, start, stop));
+            checkCudaErrors(cudaEventElapsedTime(&milliseconds, start, stop));
 
         	// Copia il risultato ad ogni iterazione
-        	CUDA_CHECK(cudaMemcpy(y_parallel_csr, d_y, csr_mat.M * sizeof(double), cudaMemcpyDeviceToHost));
+            memset(y_parallel_csr, 0, csr_mat.M * sizeof(double));
+
+        	checkCudaErrors(cudaMemcpy(y_parallel_csr, d_y, csr_mat.M * sizeof(double), cudaMemcpyDeviceToHost));
 
         	// Controlla la correttezza del risultato ad ogni iterazione
         	printf("Verifica risultato iterazione %d:\n", i);
         	DiffMetrics diffMetrics = computeDifferenceMetrics(y_serial, y_parallel_csr, csr_mat.M);
+
 			accumulateErrors(&diffMetrics, WARP_SHARED_MEMORY_CSR_TIME);
 
             if (i > ITERATION_SKIP){
@@ -355,13 +367,13 @@ int main() {
     	// Vettori x e y sulla device
     	double *d_x_hll;
     	double *d_y_hll;
-    	CUDA_CHECK(cudaMalloc((void **)&d_x_hll, csr_mat.N * sizeof(double)));
-    	CUDA_CHECK(cudaMalloc((void **)&d_y_hll, csr_mat.M * sizeof(double)));
+    	checkCudaErrors(cudaMalloc((void **)&d_x_hll, csr_mat.N * sizeof(double)));
+    	checkCudaErrors(cudaMalloc((void **)&d_y_hll, csr_mat.M * sizeof(double)));
     	// Copia dei dati x dalla CPU alla GPU
-    	CUDA_CHECK(cudaMemcpy(d_x_hll, x, csr_mat.N * sizeof(double), cudaMemcpyHostToDevice));
+    	checkCudaErrors(cudaMemcpy(d_x_hll, x, csr_mat.N * sizeof(double), cudaMemcpyHostToDevice));
     	// Alloca array di blocchi ELLPACK sulla GPU
     	ELLPACKBlock *d_blocks;
-    	CUDA_CHECK(cudaMalloc((void **)&d_blocks, hll_mat.num_blocks * sizeof(ELLPACKBlock)));
+    	checkCudaErrors(cudaMalloc((void **)&d_blocks, hll_mat.num_blocks * sizeof(ELLPACKBlock)));
     	// Crea array temporaneo di blocchi sull'host
     	ELLPACKBlock *temp_blocks = (ELLPACKBlock *)malloc(hll_mat.num_blocks * sizeof(ELLPACKBlock));
     	// Alloca e copia ogni blocco ELLPACK
@@ -371,12 +383,12 @@ int main() {
     		// Allocazione memoria per i dati del blocco (layout trasposto)
     		int *d_JA;
     		double *d_AS;
-    		CUDA_CHECK(cudaMalloc((void **)&d_JA, h_block.MAXNZ * h_block.M * sizeof(int)));
-    		CUDA_CHECK(cudaMalloc((void **)&d_AS, h_block.MAXNZ * h_block.M * sizeof(double)));
+    		checkCudaErrors(cudaMalloc((void **)&d_JA, h_block.MAXNZ * h_block.M * sizeof(int)));
+    		checkCudaErrors(cudaMalloc((void **)&d_AS, h_block.MAXNZ * h_block.M * sizeof(double)));
 
     		// Copia dei dati del blocco
-    		CUDA_CHECK(cudaMemcpy(d_JA, h_block.JA, h_block.MAXNZ * h_block.M * sizeof(int), cudaMemcpyHostToDevice));
-    		CUDA_CHECK(cudaMemcpy(d_AS, h_block.AS, h_block.MAXNZ * h_block.M * sizeof(double), cudaMemcpyHostToDevice));
+    		checkCudaErrors(cudaMemcpy(d_JA, h_block.JA, h_block.MAXNZ * h_block.M * sizeof(int), cudaMemcpyHostToDevice));
+    		checkCudaErrors(cudaMemcpy(d_AS, h_block.AS, h_block.MAXNZ * h_block.M * sizeof(double), cudaMemcpyHostToDevice));
 
     		// Imposta i campi del blocco temporaneo
     		temp_blocks[b].M = h_block.M;
@@ -386,8 +398,8 @@ int main() {
     		temp_blocks[b].AS = d_AS;
     	}
     	// Copia l'intero array di blocchi sulla GPU
-    	CUDA_CHECK(cudaMemcpy(d_blocks, temp_blocks, hll_mat.num_blocks * sizeof(ELLPACKBlock), cudaMemcpyHostToDevice));
-       // Trova il valore massimo di MAXNZ tra tutti i blocchi
+    	checkCudaErrors(cudaMemcpy(d_blocks, temp_blocks, hll_mat.num_blocks * sizeof(ELLPACKBlock), cudaMemcpyHostToDevice));
+        // Trova il valore massimo di MAXNZ tra tutti i blocchi
 		int max_MAXNZ = compute_max_MAXNZ(hll_mat.blocks, hll_mat.num_blocks);
 		// Funzione lambda per calcolare la shared memory in base alla dimensione del blocco
 		auto sharedMemCalculator_hll = [&](int b_size) {
@@ -404,7 +416,8 @@ int main() {
         DiffMetrics mediumHllWarpShared;
 		if(blockSize != 0){
 			// Assicurati che blockSize sia multiplo di 32
-			blockSize = (blockSize / 32) * 32;
+			blockSize = ((blockSize + 31) / 32) * 32;
+			if (blockSize < 32) blockSize = 32;
 			warps_per_block = blockSize / 32;
 
 			// Calcola il numero di blocchi necessari
@@ -431,35 +444,44 @@ int main() {
         	clear_gpu_cache(64);
 	        for(int i = 1; i < NUM_ITERATION; i++) {
 	            printf("Iterazione numero: %d\n", i);
-	            CUDA_CHECK(cudaMemset(d_y_hll, 0, csr_mat.M * sizeof(double)));
+	            checkCudaErrors(cudaMemset(d_y_hll, 0, csr_mat.M * sizeof(double)));
+                double* h_y = (double*)malloc(csr_mat.M * sizeof(double));
 	            // Registra l'evento di inizio
-	            CUDA_CHECK(cudaEventRecord(start));
+	            checkCudaErrors(cudaEventRecord(start));
 
         		spmv_hll_warp_shared_kernel_v1<<<grid_size, blockSize, shared_mem_size>>>(
 	            csr_mat.M, d_blocks, d_x_hll, d_y_hll);
 
-	            CUDA_CHECK(cudaGetLastError());
+	            checkCudaErrors(cudaGetLastError());
 
 	            // Registra l'evento di fine
-	            CUDA_CHECK(cudaEventRecord(stop));
+	            checkCudaErrors(cudaEventRecord(stop));
 
 	            // Aspetta la fine dell'esecuzione
-	            CUDA_CHECK(cudaEventSynchronize(stop));
+	            checkCudaErrors(cudaEventSynchronize(stop));
 
 	            // Calcola il tempo trascorso
 	            float milliseconds = 0;
-	            CUDA_CHECK(cudaEventElapsedTime(&milliseconds, start, stop));
+	            checkCudaErrors(cudaEventElapsedTime(&milliseconds, start, stop));
                 // Copia il risultato ad ogni iterazione
-	            CUDA_CHECK(cudaMemcpy(y_hll, d_y, csr_mat.M * sizeof(double), cudaMemcpyDeviceToHost));
+                memset(y_hll, 0, csr_mat.M * sizeof(double));
+                for(int j = 0; j < 30; j++) {
+                    printf("%.10f ", y_hll[j]);
+                }
+	            checkCudaErrors(cudaMemcpy(y_hll, d_y_hll, csr_mat.M * sizeof(double), cudaMemcpyDeviceToHost));
+                for(int j = 0; j < 30; j++) {
+                    printf("%.10f ", y_hll[j]);
+                }
 	            // Controlla la correttezza del risultato ad ogni iterazione
 	            printf("Verifica risultato iterazione %d:\n", i);
 	        	DiffMetrics diffMetrics = computeDifferenceMetrics(y_serial, y_hll, csr_mat.M);
+
 				accumulateErrors(&diffMetrics, WARP_SHARED_MEMORY_HLL_TIME);
         		if(i > ITERATION_SKIP){
                 	update_medium_metric(WARP_SHARED_MEMORY_HLL_TIME, milliseconds / 1000.0f);
-	            	printf("Tempo impiegato per l'esecuzione del Kernel-Warp con shared memory: %f secondi\n", milliseconds/1000.0f);
+	            	printf("Tempo impiegato per l'esecuzione del Kernel-Warp con shared memory HLL: %f secondi\n", milliseconds/1000.0f);
 	            	double flops_parallel = calculate_flops(csr_mat.nz, milliseconds/1000.0f);
-	            	printf("Tempo esecuzione parallelo Warp con shared memory CSR: %f secondi\n", milliseconds/1000.0f);
+	            	printf("Tempo esecuzione parallelo Warp con shared memory HLL: %f secondi\n", milliseconds/1000.0f);
 	            	printf("Valore dei FLOPS: %.2f\nValore formattato: ", flops_parallel);
 	            	print_flops(flops_parallel);
                     printf("Errore relativo: %f\n", diffMetrics.mean_rel_err);
@@ -489,13 +511,13 @@ int main() {
     		printf("Iterazione numero: %d\n", i);
     		memset(y_hll, 0, csr_mat.M * sizeof(double));
 
-    		CUDA_CHECK(cudaEventRecord(start));
+    		checkCudaErrors(cudaEventRecord(start));
     		spmv_hll_serial(hll_mat.num_blocks, hll_mat.blocks, x, y_hll);
-    		CUDA_CHECK(cudaEventRecord(stop));
+    		checkCudaErrors(cudaEventRecord(stop));
     		// Aspetta la fine dell'esecuzione
-    		CUDA_CHECK(cudaEventSynchronize(stop));
+    		checkCudaErrors(cudaEventSynchronize(stop));
             float milliseconds_hll = 0;
-    		CUDA_CHECK(cudaEventElapsedTime(&milliseconds_hll, start, stop));
+    		checkCudaErrors(cudaEventElapsedTime(&milliseconds_hll, start, stop));
     		printf("Verifica risultato iterazione %d:\n", i);
     		DiffMetrics diffMetrics = computeDifferenceMetrics(y_serial, y_hll, csr_mat.M);
 			accumulateErrors(&diffMetrics, SERIAL_HLL_TIME);
@@ -539,30 +561,30 @@ int main() {
 		    printf("Iterazione numero: %d\n", i);
 
 		    // Azzera il vettore risultato
-		    CUDA_CHECK(cudaMemset(d_y_hll, 0, csr_mat.M * sizeof(double)));
+		    checkCudaErrors(cudaMemset(d_y_hll, 0, csr_mat.M * sizeof(double)));
 
 		    // Registra l'evento di inizio
-		    CUDA_CHECK(cudaEventRecord(start));
+		    checkCudaErrors(cudaEventRecord(start));
 
 		    // Lancio del kernel CUDA con la struttura HLL
 		    spmv_hll_naive_kernel<<<blocksPerGrid_hll, threadsPerBlock_hll>>>(
 		        csr_mat.M, d_blocks, d_x_hll, d_y_hll
 		    );
 
-            CUDA_CHECK(cudaGetLastError());
+            checkCudaErrors(cudaGetLastError());
 
             // Registra l'evento di fine
-            CUDA_CHECK(cudaEventRecord(stop));
+            checkCudaErrors(cudaEventRecord(stop));
 
             // Aspetta la fine dell'esecuzione
-            CUDA_CHECK(cudaEventSynchronize(stop));
+            checkCudaErrors(cudaEventSynchronize(stop));
 
 			// Controlla la correttezza del risultato ad ogni iterazione
 			printf("Verifica risultato iterazione %d:\n", i);
             float milliseconds = 0;
 		    cudaEventElapsedTime(&milliseconds, start, stop);
             // Copia il risultato ad ogni iterazione
-			CUDA_CHECK(cudaMemcpy(y_hll, d_y_hll, csr_mat.M * sizeof(double), cudaMemcpyDeviceToHost));
+			checkCudaErrors(cudaMemcpy(y_hll, d_y_hll, csr_mat.M * sizeof(double), cudaMemcpyDeviceToHost));
 
 			DiffMetrics diffMetrics = computeDifferenceMetrics(y_serial, y_hll, csr_mat.M);
 			accumulateErrors(&diffMetrics, ROW_HLL_TIME);
@@ -594,7 +616,7 @@ int main() {
                                   spmv_hll_warp_kernel, 0, 0);
 
 	// Assicurati che blockSize sia multiplo di 32 (dimensione di un warp)
-	blockSize = (blockSize / 32) * 32;
+	blockSize = (blockSize + 31 / 32) * 32;
 	warpsPerBlock = blockSize / 32;
 	int threadsPerBlock_hll_warp = blockSize;
 
@@ -609,8 +631,8 @@ int main() {
     clear_gpu_cache(64);
     for(int i = 1; i < NUM_ITERATION; i++) {
         printf("Iterazione HLL-Warp numero: %d\n", i);
-        CUDA_CHECK(cudaMemset(d_y_hll, 0, csr_mat.M * sizeof(double)));
-        CUDA_CHECK(cudaEventRecord(start));
+        checkCudaErrors(cudaMemset(d_y_hll, 0, csr_mat.M * sizeof(double)));
+        checkCudaErrors(cudaEventRecord(start));
 
         spmv_hll_warp_kernel<<<blocksPerGrid_hll_warp, threadsPerBlock_hll_warp>>>(
             csr_mat.M,        // total_M
@@ -619,22 +641,22 @@ int main() {
             d_y_hll          // Vettore y su GPU
         );
 
-       	CUDA_CHECK(cudaGetLastError());
+       	checkCudaErrors(cudaGetLastError());
 
        	// Registra l'evento di fine
-       	CUDA_CHECK(cudaEventRecord(stop));
+       	checkCudaErrors(cudaEventRecord(stop));
 
        	// Aspetta la fine dell'esecuzione
-       	CUDA_CHECK(cudaEventSynchronize(stop));
+       	checkCudaErrors(cudaEventSynchronize(stop));
 
     	// Controlla la correttezza del risultato ad ogni iterazione
-        CUDA_CHECK(cudaMemcpy(y_hll, d_y_hll, csr_mat.M * sizeof(double), cudaMemcpyDeviceToHost));
+        checkCudaErrors(cudaMemcpy(y_hll, d_y_hll, csr_mat.M * sizeof(double), cudaMemcpyDeviceToHost));
 
     	printf("Verifica risultato iterazione %d:\n", i);
     	DiffMetrics diffMetrics = computeDifferenceMetrics(y_serial, y_hll, csr_mat.M);
         accumulateErrors(&diffMetrics, WARP_HLL_TIME);
        	float milliseconds = 0;
-       	CUDA_CHECK(cudaEventElapsedTime(&milliseconds, start, stop));
+       	checkCudaErrors(cudaEventElapsedTime(&milliseconds, start, stop));
        	if(i > ITERATION_SKIP){
         	printf("Tempo Kernel-HLL-Warp: %f ms\n", milliseconds/1000.0f);
     		update_medium_metric(WARP_HLL_TIME, milliseconds / 1000.0f);
@@ -658,8 +680,8 @@ int main() {
     printf("Errore assoluto medio parallelo HLL Warp: %f\n", mediumHllWarp.mean_abs_err);
 
     for (int b = 0; b < hll_mat.num_blocks; b++) {
-    	CUDA_CHECK(cudaFree(temp_blocks[b].JA));
-    	CUDA_CHECK(cudaFree(temp_blocks[b].AS));
+    	checkCudaErrors(cudaFree(temp_blocks[b].JA));
+    	checkCudaErrors(cudaFree(temp_blocks[b].AS));
     }
 
     // Output risultati medi e salvataggio CSV
@@ -691,7 +713,7 @@ int main() {
     print_flops(perf_metrics_hll_naive.flops);
     printf("Prestazioni parallele HLL WARP PER RIGA: ");
    	print_flops(perf_metrics_hll_warp.flops);
-    printf("Prestazioni parallele CSR WARP PER RIGA CON SHARED MEM HLL: ");
+    printf("Prestazioni parallele HLL WARP PER RIGA CON SHARED MEM HLL: ");
     print_flops(perf_metrics_warp_shared_hll.flops);
 
 
@@ -705,19 +727,19 @@ int main() {
 
 
     FREE_CHECK(temp_blocks);
-    CUDA_CHECK(cudaFree(d_blocks));
-    CUDA_CHECK(cudaFree(d_x_hll));
-    CUDA_CHECK(cudaFree(d_y_hll));
+    checkCudaErrors(cudaFree(d_blocks));
+    checkCudaErrors(cudaFree(d_x_hll));
+    checkCudaErrors(cudaFree(d_y_hll));
     FREE_CHECK(y_serial);
     FREE_CHECK(y_parallel_csr);
     FREE_CHECK(y_hll);
-    CUDA_CHECK(cudaEventDestroy(start));
-    CUDA_CHECK(cudaEventDestroy(stop));
-	CUDA_CHECK(cudaFree(d_row_ptr));
-    CUDA_CHECK(cudaFree(d_col_idx));
-    CUDA_CHECK(cudaFree(d_values));
-    CUDA_CHECK(cudaFree(d_x));
-    CUDA_CHECK(cudaFree(d_y));
+    checkCudaErrors(cudaEventDestroy(start));
+    checkCudaErrors(cudaEventDestroy(stop));
+	checkCudaErrors(cudaFree(d_row_ptr));
+    checkCudaErrors(cudaFree(d_col_idx));
+    checkCudaErrors(cudaFree(d_values));
+    checkCudaErrors(cudaFree(d_x));
+    checkCudaErrors(cudaFree(d_y));
 
 	}
 }

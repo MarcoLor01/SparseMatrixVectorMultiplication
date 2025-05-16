@@ -6,16 +6,6 @@
 #include <cuda_runtime.h>
 #include <matrix_parser.cuh>
 #include <performance_calculate.cuh>
-#define CUDA_CHECK(call)                                                      \
-do {                                                                          \
-    cudaError_t err = call;                                                   \
-    if (err != cudaSuccess) {                                                 \
-        fprintf(stderr,                                                      \
-                "Errore CUDA in %s:%d – \"%s\"\n",                            \
-                __FILE__, __LINE__, cudaGetErrorString(err));                \
-        exit(EXIT_FAILURE);                                                   \
-    }                                                                         \
-} while (0)
 
 #define FREE_CHECK(ptr)           \
 do {                              \

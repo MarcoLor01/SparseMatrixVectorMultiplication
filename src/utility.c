@@ -91,36 +91,6 @@ void sort_row(int *col_idx, double *values, size_t low, size_t high) {
 }
 
 
-double checkDifferences(const double *y_h, const double *y_SerialResult, const int matrix_row, bool full_print) {
-    double totalRelativeDiff = 0.0;  // Somma delle differenze relative
-    int count = 0;  // Conta gli errori significativi
-
-    for (int i = 0; i < matrix_row; i++) {
-        const double toleranceRel = 1e-6;
-        const double absTolerance = 1e-7;
-        const double currentDiff = fabs(y_SerialResult[i] - y_h[i]);  // Differenza assoluta
-        double maxAbs = fmax(fabs(y_SerialResult[i]), fabs(y_h[i]));  // Max tra i valori assoluti
-
-        // Se il massimo valore è piccolo, consideriamo una tolleranza relativa
-        if (maxAbs < toleranceRel) {
-            maxAbs = toleranceRel;
-        }
-
-        const double relativeDiff = currentDiff > absTolerance ? currentDiff / maxAbs : 0.0;  // Calcola differenza relativa
-
-        // Se la differenza è significativa, accumula il valore
-        if (relativeDiff > toleranceRel) {
-            if (full_print == true) {
-                printf("Errore: y[%d] calcolato (%.10f) differisce dal valore seriale (%.10f).\n", i, y_h[i], y_SerialResult[i]);
-            }
-            totalRelativeDiff += relativeDiff;
-            count++;
-        }
-    }
-
-    // Restituisce la media delle differenze relative se sono stati trovati errori significativi
-    return count > 0 ? totalRelativeDiff / count : 0.0;
-}
 
 void write_results_to_csv(const char *matrix_name, const int num_rows, const int num_cols, const int nz,
                           const int num_threads, const double time_serial, const double time_serial_hll, const double time_parallel,
