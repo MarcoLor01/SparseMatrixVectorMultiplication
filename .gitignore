@@ -9,3 +9,6 @@ graphs/
 
 
 
+.venv/
+cmake-build-debug/
+cmake-build-debug-server-di-dipartimento/

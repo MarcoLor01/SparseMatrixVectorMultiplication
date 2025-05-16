@@ -1,3 +1,0 @@
-C:/Users/HP/CLionProjects/SpMVParallel/cmake-build-debug/CMakeFiles/SpMV_OpenMP.dir
-C:/Users/HP/CLionProjects/SpMVParallel/cmake-build-debug/CMakeFiles/edit_cache.dir
-C:/Users/HP/CLionProjects/SpMVParallel/cmake-build-debug/CMakeFiles/rebuild_cache.dir
