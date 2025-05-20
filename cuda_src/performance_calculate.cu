@@ -7,6 +7,9 @@
 #include <math.h>
 #include "performance_calculate.cuh"
 #include <utility.cuh>
+#include <cmath>
+#include <cstdio>
+#include <algorithm>
 
 MetricStats metrics[NUM_METRICS];
 
@@ -95,14 +98,6 @@ void update_medium_metric(const MediumPerformanceMetric type, const double value
 }
 
 
-#include <cmath>
-#include <cstdio>
-#include <algorithm>
-
-
-#include <cmath>
-#include <cstdio>
-#include <algorithm>
 
 
 DifferenceMetrics computeDifferenceMetrics(

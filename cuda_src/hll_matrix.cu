@@ -87,7 +87,7 @@ int convert_to_hll(const PreMatrix *pre, HLLMatrix *hll) {
         hll->blocks[b].N = pre->N;
         hll->blocks[b].MAXNZ = max_nnz;
 
-        // Allocazione degli array JA e AS in formato trasposto
+        // Allocazione degli array JA e AS
         if (max_nnz > 0) {
             // Allocazione linearizzata di JA (MAXNZ x num_rows)
             hll->blocks[b].JA = (int *)malloc(max_nnz * num_rows * sizeof(int));
@@ -227,7 +227,7 @@ int convert_to_hll(const PreMatrix *pre, HLLMatrix *hll) {
             // Memorizza l'ultimo indice di colonna valido
             last_valid_col[i] = col;
 
-            // Inserimento valore con layout trasposto
+            // Inserimento valore
             const int idx = local_row * hll->blocks[block_idx].MAXNZ + j;
 
             hll->blocks[block_idx].JA[idx] = col;

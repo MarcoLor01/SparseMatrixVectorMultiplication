@@ -11,7 +11,7 @@
 
 #define HACK_SIZE 32
 
-// Struttura blocco ELLPACK con layout trasposto
+// Struttura blocco ELLPACK
 typedef struct {
     int M;              // Numero di righe
     int N;              // Numero di colonne

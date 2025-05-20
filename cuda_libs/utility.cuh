@@ -36,4 +36,7 @@ void clear_gpu_cache(size_t clear_size_mb);
 int process_matrix_file(const char *filepath, PreMatrix *pre_mat);
 void create_directory(const char *path);
 int clear_directory(const char *path);
+void write_block_result_to_csv(const char *matrix_name, const int nz, int block_size_csr_row, int block_size_csr_warp,
+                            int block_size_csr_shared, int block_size_hll_row, int block_size_hll_warp,
+                            int block_size_hll_shared, const char *output_file);
 #endif //UTILITY_CUH

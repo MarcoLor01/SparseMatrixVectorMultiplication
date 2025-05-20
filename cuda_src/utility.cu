@@ -233,5 +233,34 @@ void create_directory(const char *path) {
     }
 }
 
+void write_block_result_to_csv(const char *matrix_name, const int nz, int block_size_csr_row, int block_size_csr_warp,
+                                 int block_size_csr_shared, int block_size_hll_row, int block_size_hll_warp,
+                                 int block_size_hll_shared, const char *output_file) {
+    FILE *fp = fopen(output_file, "a+");  // Append + read
+
+    if (fp == NULL) {
+        printf("Errore nell'apertura del file %s\n", output_file);
+        return;
+    }
+
+    // Verifica se il file è vuoto per decidere se scrivere l'intestazione
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    if (size == 0) {
+        // Scrivi l'intestazione se il file è nuovo o vuoto
+        fprintf(fp, "matrix_name,nonzeros,block_size_csr_row,block_size_csr_warp,block_size_csr_shared,block_size_hll_row,block_size_hll_warp,block_size_hll_shared\n");
+    }
+
+    // Scrivi una riga di dati
+    fprintf(fp,
+            "%s,%d,%d,%d,%d,%d,%d,%d\n",
+            matrix_name, nz, block_size_csr_row, block_size_csr_warp, block_size_csr_shared,
+            block_size_hll_row, block_size_hll_warp, block_size_hll_shared);
+
+    fclose(fp);
+}
+
+
+
 
 

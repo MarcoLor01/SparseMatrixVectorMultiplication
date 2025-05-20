@@ -214,3 +214,4 @@ void create_directory(const char *path) {
         printf("Directory 'result' creata con successo.\n");
     }
 }
+

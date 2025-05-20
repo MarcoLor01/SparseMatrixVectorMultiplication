@@ -23,6 +23,7 @@ int main() {
     const char *directory_path = "../matrix_for_test/";
     //const char *directory_path = "../matrix_generated/";
 	const char *output_csv = "../result/spmv_results_cuda.csv";
+	const char *output_csv_dim = "../result/spmv_results_cuda_block_dim.csv";
     const char *directory_result = "../result";
 
     create_directory(directory_result);
@@ -144,10 +145,10 @@ int main() {
     	checkCudaErrors(cudaMemcpy(d_x, x, csr_mat.N * sizeof(double), cudaMemcpyHostToDevice));
 
         // Configurazione dei parametri per il lancio del kernel
-        int minGrid, blockSize, blocksPerGrid, threadsPerBlock;
+        int minGrid, blockSize, blocksPerGrid, threadsPerBlock_csr;
 		cudaOccupancyMaxPotentialBlockSize(&minGrid, &blockSize, spmv_csr_naive_kernel, 0, csr_mat.M);
 		blocksPerGrid   = (csr_mat.M + blockSize - 1) / blockSize;
-		threadsPerBlock = blockSize;
+		threadsPerBlock_csr = blockSize;
 
         // ======================================
         // TEST 2: VERSIONE THREAD PER RIGA (CSR)
@@ -162,7 +163,7 @@ int main() {
             checkCudaErrors(cudaEventRecord(start));
 
             // Lancio del kernel CUDA
-            spmv_csr_naive_kernel<<<blocksPerGrid, threadsPerBlock>>>(
+            spmv_csr_naive_kernel<<<blocksPerGrid, threadsPerBlock_csr>>>(
                 csr_mat.M, d_row_ptr, d_col_idx, d_values, d_x, d_y
             );
 
@@ -212,7 +213,7 @@ int main() {
                                   spmv_csr_warp_kernel, 0, 0);
 
 		// Assicurati che blockSize sia multiplo di 32 (dimensione di un warp)
-		blockSize = (blockSize / 32) * 32;
+    	blockSize = ((blockSize + 31) / 32) * 32;
         if (blockSize < 32) blockSize = 32;
 		int warps_per_block = blockSize / 32;
 		int threadsPerBlock_warp = blockSize;
@@ -296,10 +297,10 @@ int main() {
                 //limite della mem. condivisa disponibile, quindi la quantità assegnata ad ogni blocco limita
                 //necessariamente il numero di blocchi attivi
 
-		blockSize = (blockSize +31 / 32) * 32;
+    	blockSize = ((blockSize + 31) / 32) * 32;
         if (blockSize < 32) blockSize = 32;
 		int warpsPerBlock = blockSize / 32;
-		threadsPerBlock = blockSize;
+		int threadsPerBlock_csr_shared = blockSize;
 
 		// Un warp per riga, quindi M warps totali
 		blocksPerGrid = (csr_mat.M + warpsPerBlock - 1) / warpsPerBlock;
@@ -313,7 +314,7 @@ int main() {
             checkCudaErrors(cudaEventRecord(start));
 
             // Lancio del kernel CUDA warp-based con shared memory
-            spmv_csr_warp_shared_memory_kernel<<<blocksPerGrid, threadsPerBlock, sharedMemSize>>>(
+            spmv_csr_warp_shared_memory_kernel<<<blocksPerGrid, threadsPerBlock_csr_shared, sharedMemSize>>>(
                 csr_mat.M, d_row_ptr, d_col_idx, d_values, d_x, d_y, cacheElements
             );
 
@@ -380,7 +381,7 @@ int main() {
     	for (int b = 0; b < hll_mat.num_blocks; b++) {
     		ELLPACKBlock h_block = hll_mat.blocks[b];
 
-    		// Allocazione memoria per i dati del blocco (layout trasposto)
+    		// Allocazione memoria per i dati del blocco
     		int *d_JA;
     		double *d_AS;
     		checkCudaErrors(cudaMalloc((void **)&d_JA, h_block.MAXNZ * h_block.M * sizeof(int)));
@@ -407,18 +408,19 @@ int main() {
     		return warps * max_MAXNZ * sizeof(double);
 		};
 
+        int blockSize_hll_shared;
 		// Trova la dimensione ottimale del blocco considerando la shared memory
-		cudaOccupancyMaxPotentialBlockSizeVariableSMem(&minGrid, &blockSize,
+		cudaOccupancyMaxPotentialBlockSizeVariableSMem(&minGrid, &blockSize_hll_shared,
                                              spmv_hll_warp_shared_kernel_v1,
                                              sharedMemCalculator_hll, 0);
 
     	PerformanceMetrics perf_metrics_warp_shared_hll;
         DiffMetrics mediumHllWarpShared;
-		if(blockSize != 0){
+		if(blockSize_hll_shared != 0){
 			// Assicurati che blockSize sia multiplo di 32
-			blockSize = ((blockSize + 31) / 32) * 32;
-			if (blockSize < 32) blockSize = 32;
-			warps_per_block = blockSize / 32;
+			blockSize_hll_shared = ((blockSize_hll_shared + 31) / 32) * 32;
+			if (blockSize_hll_shared < 32) blockSize_hll_shared = 32;
+			warps_per_block = blockSize_hll_shared / 32;
 
 			// Calcola il numero di blocchi necessari
 			int grid_size = (csr_mat.M + warps_per_block - 1) / warps_per_block;
@@ -449,7 +451,7 @@ int main() {
 	            // Registra l'evento di inizio
 	            checkCudaErrors(cudaEventRecord(start));
 
-        		spmv_hll_warp_shared_kernel_v1<<<grid_size, blockSize, shared_mem_size>>>(
+        		spmv_hll_warp_shared_kernel_v1<<<grid_size, blockSize_hll_shared, shared_mem_size>>>(
 	            csr_mat.M, d_blocks, d_x_hll, d_y_hll);
 
 	            checkCudaErrors(cudaGetLastError());
@@ -465,13 +467,9 @@ int main() {
 	            checkCudaErrors(cudaEventElapsedTime(&milliseconds, start, stop));
                 // Copia il risultato ad ogni iterazione
                 memset(y_hll, 0, csr_mat.M * sizeof(double));
-                for(int j = 0; j < 30; j++) {
-                    printf("%.10f ", y_hll[j]);
-                }
+
 	            checkCudaErrors(cudaMemcpy(y_hll, d_y_hll, csr_mat.M * sizeof(double), cudaMemcpyDeviceToHost));
-                for(int j = 0; j < 30; j++) {
-                    printf("%.10f ", y_hll[j]);
-                }
+
 	            // Controlla la correttezza del risultato ad ogni iterazione
 	            printf("Verifica risultato iterazione %d:\n", i);
 	        	DiffMetrics diffMetrics = computeDifferenceMetrics(y_serial, y_hll, csr_mat.M);
@@ -616,12 +614,14 @@ int main() {
                                   spmv_hll_warp_kernel, 0, 0);
 
 	// Assicurati che blockSize sia multiplo di 32 (dimensione di un warp)
-	blockSize = (blockSize + 31 / 32) * 32;
+    blockSize = ((blockSize + 31) / 32) * 32;
+    if(blockSize < 32) blockSize = 32;
 	warpsPerBlock = blockSize / 32;
 	int threadsPerBlock_hll_warp = blockSize;
 
 	// Un warp per riga, quindi M warps totali
 	int blocksPerGrid_hll_warp = (csr_mat.M + warpsPerBlock - 1) / warpsPerBlock;
+
 
     // =========================
     // TEST 2: VERSIONE HLL WARP
@@ -725,6 +725,8 @@ int main() {
 						mediumCsrParallel, mediumCsrWarp, mediumCsrWarpShared, mediumHllNaive, mediumHllWarp, mediumHllWarpShared,
                         output_csv);
 
+    write_block_result_to_csv(dir->d_name, csr_mat.nz, threadsPerBlock_csr, threadsPerBlock_warp, threadsPerBlock_csr_shared,
+                              threadsPerBlock_hll, threadsPerBlock_hll_warp, blockSize_hll_shared, output_csv_dim);
 
     FREE_CHECK(temp_blocks);
     checkCudaErrors(cudaFree(d_blocks));

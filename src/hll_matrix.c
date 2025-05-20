@@ -231,7 +231,7 @@ int convert_to_hll(const PreMatrix *pre, HLLMatrix *hll) {
             // Memorizza l'ultimo indice di colonna valido
             last_valid_col[i] = col;
 
-            // Inserimento valore con layout trasposto
+            // Inserimento valore con layout
             const int idx = local_row * hll->blocks[block_idx].MAXNZ + j;
 
             hll->blocks[block_idx].JA[idx] = col;
@@ -453,7 +453,7 @@ int prepare_thread_distribution_hll(const HLLMatrix *matrix, int num_threads,
         for (int i = 0; i < num_rows; i++) {
             int count = 0;
             for (int j = 0; j < block->MAXNZ; j++) {
-                // Accesso all'elemento (i,j) nel layout trasposto
+                // Accesso all'elemento (i,j)
                 int idx = j * num_rows + i;
                 if (block->JA && idx < num_rows * block->MAXNZ &&
                     block->JA[idx] >= 0 && block->JA[idx] < block->N) {

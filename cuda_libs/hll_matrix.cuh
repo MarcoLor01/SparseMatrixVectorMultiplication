@@ -17,7 +17,7 @@ typedef struct {
     double *AS;         // Array di coefficienti (MAXNZ x M) linearizzato
 } ELLPACKBlock;
 
-// Struttura HLL modificata (come lista di blocchi)
+// Struttura HLL
 typedef struct {
     int num_blocks;     // Numero di blocchi
     ELLPACKBlock *blocks; // Array di blocchi ELLPACK

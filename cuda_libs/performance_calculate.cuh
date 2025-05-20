@@ -9,7 +9,7 @@
 
 typedef struct {
     double sum;         // Per calcolare la media
-    double* values;     // Array di valori per calcolare varianza/deviazione standard
+    double* values;
     double relative_error;       // Errore relativo
     double absolute_error;       // Errore assoluto
     int count;          // Contatore delle misurazioni
